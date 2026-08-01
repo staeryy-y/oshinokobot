@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import random
 from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 
 from ... import db
@@ -30,6 +32,23 @@ def _format_appeal_results(counts: dict[int, int], tags_by_id: dict[int, str]) -
         return "No votes"
     ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
     return "\n".join(f"**{tags_by_id.get(tag_id, 'unknown')}**: {c}" for tag_id, c in ranked)
+
+
+def _compute_result_tier(tier_counts: dict[str, int]) -> str | None:
+    """The character's official dub: whichever tier got the most votes.
+    Zero tier votes (empty dict — get_tier_vote_counts only includes tiers
+    with at least one vote) means no dub at all, not a default one. A tie
+    among the top tier(s) is broken with a random pick among just those
+    tied tiers, not all five."""
+    if not tier_counts:
+        return None
+    top_count = max(tier_counts.values())
+    winners = [tier for tier, count in tier_counts.items() if count == top_count]
+    return random.choice(winners)
+
+
+def _format_dub(result_tier: str | None) -> str:
+    return f"**{result_tier}**" if result_tier else "No tier votes — not dubbed"
 
 
 class Polls(commands.Cog):
@@ -157,8 +176,17 @@ class Polls(commands.Cog):
         )
 
     async def _close_poll(self, poll) -> None:
+        tags = await db.list_tags(self.bot.db)
+        tier_counts = await db.get_tier_vote_counts(self.bot.db, poll["id"])
+        appeal_counts = await db.get_appeal_vote_counts(self.bot.db, poll["id"])
+        tags_by_id = {t["id"]: t["name"] for t in tags}
+        result_tier = _compute_result_tier(tier_counts)
+
         await db.close_poll(
-            self.bot.db, poll["id"], closed_at=datetime.now(timezone.utc).isoformat()
+            self.bot.db,
+            poll["id"],
+            closed_at=datetime.now(timezone.utc).isoformat(),
+            result_tier=result_tier,
         )
         if poll["message_id"] is None:
             return
@@ -172,11 +200,6 @@ class Polls(commands.Cog):
             logger.warning("could not fetch poll #%s's message to close it", poll["id"])
             return
 
-        tags = await db.list_tags(self.bot.db)
-        tier_counts = await db.get_tier_vote_counts(self.bot.db, poll["id"])
-        appeal_counts = await db.get_appeal_vote_counts(self.bot.db, poll["id"])
-        tags_by_id = {t["id"]: t["name"] for t in tags}
-
         embed = message.embeds[0] if message.embeds else discord.Embed()
         embed.add_field(
             name="Final tier results", value=_format_tier_results(tier_counts), inline=False
@@ -186,6 +209,7 @@ class Polls(commands.Cog):
             value=_format_appeal_results(appeal_counts, tags_by_id),
             inline=False,
         )
+        embed.add_field(name="Officially dubbed", value=_format_dub(result_tier), inline=False)
         embed.set_footer(text="Poll closed")
 
         # Passing the real tags/counts (not empty) so the disabled buttons
@@ -195,3 +219,39 @@ class Polls(commands.Cog):
             poll["id"], tags, tier_counts=tier_counts, appeal_counts=appeal_counts, disabled=True
         )
         await message.edit(embed=embed, view=closed_view)
+
+    @app_commands.command(
+        name="results", description="Show the most recently finished character poll's results"
+    )
+    async def results(self, interaction: discord.Interaction) -> None:
+        poll = await db.get_most_recent_closed_poll(self.bot.db)
+        if poll is None:
+            await interaction.response.send_message("No polls have finished yet.", ephemeral=True)
+            return
+
+        character = await db.get_character(self.bot.db, poll["character_id"])
+        tier_counts = await db.get_tier_vote_counts(self.bot.db, poll["id"])
+        appeal_counts = await db.get_appeal_vote_counts(self.bot.db, poll["id"])
+        tags_by_id = {t["id"]: t["name"] for t in await db.list_tags(self.bot.db)}
+
+        embed = discord.Embed(title=character["name"], color=discord.Color.blurple())
+        if character["series"]:
+            embed.description = character["series"]
+        embed.add_field(
+            name="Final tier results", value=_format_tier_results(tier_counts), inline=False
+        )
+        embed.add_field(
+            name="Final appeal results",
+            value=_format_appeal_results(appeal_counts, tags_by_id),
+            inline=False,
+        )
+        embed.add_field(
+            name="Officially dubbed", value=_format_dub(poll["result_tier"]), inline=False
+        )
+        embed.set_footer(text="Poll closed " + poll["closed_at"][:16].replace("T", " ") + " UTC")
+
+        filename = Path(character["image_path"]).name
+        embed.set_image(url=f"attachment://{filename}")
+        await interaction.response.send_message(
+            embed=embed, file=discord.File(character["image_path"], filename=filename)
+        )

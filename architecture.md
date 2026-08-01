@@ -73,6 +73,13 @@ stateDiagram-v2
   not on a separate 24-hour timer. The previous message gets edited in
   place — final tallies added as embed fields, the view rebuilt with every
   component disabled — rather than deleted or replaced.
+- **Official dub**: closing also computes `polls.result_tier`
+  (`_compute_result_tier` in `app/bot/cogs/polls.py`) — whichever tier got
+  the most votes. Zero tier votes means no dub at all (`NULL`), not a
+  default one; a tie among the top tier(s) is broken with `random.choice`
+  among *only* the tied tiers, never all five. Shown as an "Officially
+  dubbed" embed field alongside the final tallies, and in the admin UI
+  (`/admin/polls` list + poll detail page).
 - **Voting**: both questions are independent button groups on the same
   message (`app/bot/views.py::PollView`) — one `discord.ui.Button` per
   archetype tag, plus five more for the tier. Each vote is an upsert
@@ -97,6 +104,21 @@ stateDiagram-v2
   whatever poll is currently `open`, with current counts, so a bot restart
   mid-poll doesn't orphan the buttons on the still-live message.
 
+## Slash commands
+
+`/results` (`Polls.results`) is the bot's first — and so far only — slash
+command: posts the most recently *closed* poll's results (final tallies +
+official dub) as a fresh, public message, reusing the same embed-building
+helpers `_close_poll` uses so the two never drift apart. It exists for
+whoever missed the original poll, or just wants a recap without scrolling.
+Not restricted to a specific channel or role.
+
+Adding it meant `OshinokoBot.setup_hook` now actually syncs the command
+tree (`self.tree.sync()`, global — up to Discord's usual ~1hr propagation
+delay — plus an instant copy to every guild in `Config.guild_ids` via
+`copy_global_to`). `guild_ids` existed before this but had nothing to
+consume it; this is that consumer.
+
 ## Data model
 
 ```
@@ -120,7 +142,8 @@ guild_config                            -- singleton row (id = 1)
 
 polls
   id, character_id -> characters.id, channel_id, message_id (nullable
-  until sent), status (open|closed), posted_at, closed_at (nullable)
+  until sent), status (open|closed), posted_at, closed_at (nullable),
+  result_tier (nullable — the official dub, see Poll lifecycle below)
 
 appeal_votes
   poll_id -> polls.id, user_id, tag_id -> archetype_tags.id,

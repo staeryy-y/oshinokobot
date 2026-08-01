@@ -139,6 +139,18 @@ oshinokobot/
 6. **Admin UI: poll results/history** — view past polls, tallies, ~~and (per assumption 4) not raw per-user votes~~ — **superseded**: per-voter detail (who voted for what, with a display-name snapshot captured at vote time) was added after initial build. See `architecture.md`.
 7. **`architecture.md` / `setup.md`** written for real, deploy checklist, first live test in a real guild.
 
+## Post-v1 additions
+
+Not in the original plan — added after the v1 build, on request:
+
+- **`/results` slash command** — the bot's first slash command; shows the
+  most recently closed poll's results (tallies + official dub) as a fresh
+  message. See `architecture.md` → *Slash commands*.
+- **Official dub**: closing a poll now computes `polls.result_tier` —
+  whichever tier got the most votes, `NULL` if there were zero tier votes
+  (not defaulted to any tier), ties broken randomly among only the tied
+  tiers. See `architecture.md` → *Poll lifecycle*.
+
 ## Open for later (not blocking v1)
 
 - What happens if the character pool runs dry (no unused characters left) when the daily job fires — post nothing + log a warning, vs. recycle oldest-posted? Deferred until it's closer to actually happening.

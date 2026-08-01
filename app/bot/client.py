@@ -23,4 +23,16 @@ class OshinokoBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await self.add_cog(Polls(self))
+
+        # Global sync always runs, so /results works in any guild the bot's
+        # in — known ahead of time or not — within Discord's usual
+        # propagation delay (up to ~1hr). Guild ids listed in
+        # DISCORD_GUILD_ID additionally get an instant copy, for whichever
+        # server that wait is annoying in.
+        await self.tree.sync()
+        for guild_id in self.config.guild_ids:
+            guild = discord.Object(id=guild_id)
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+
         logger.info("bot setup complete")

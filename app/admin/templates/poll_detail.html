@@ -12,6 +12,9 @@
   Status: {{ poll.status }} · Posted {{ poll.posted_at[:16].replace('T', ' ') }}
   {% if poll.closed_at %} · Closed {{ poll.closed_at[:16].replace('T', ' ') }}{% endif %}
 </p>
+{% if poll.status == 'closed' %}
+<p><strong>Officially dubbed:</strong> {{ poll.result_tier or 'No tier votes — not dubbed' }}</p>
+{% endif %}
 
 <h2>Tier results</h2>
 <table>

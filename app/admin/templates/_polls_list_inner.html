@@ -1,6 +1,6 @@
 {% if polls %}
 <table>
-  <thead><tr><th>Character</th><th>Status</th><th>Posted</th><th>Closed</th><th></th></tr></thead>
+  <thead><tr><th>Character</th><th>Status</th><th>Dub</th><th>Posted</th><th>Closed</th><th></th></tr></thead>
   <tbody>
     {% for p in polls %}
     <tr>
@@ -9,6 +9,7 @@
         {% if p.character_series %}<span class="muted">({{ p.character_series }})</span>{% endif %}
       </td>
       <td>{{ p.status }}</td>
+      <td>{{ p.result_tier or '—' }}</td>
       <td class="muted">{{ p.posted_at[:16].replace('T', ' ') }}</td>
       <td class="muted">{{ p.closed_at[:16].replace('T', ' ') if p.closed_at else '—' }}</td>
       <td><a class="button" href="/admin/polls/{{ p.id }}">View</a></td>

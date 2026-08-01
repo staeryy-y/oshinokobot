@@ -248,9 +248,12 @@ async def get_poll(conn: aiosqlite.Connection, poll_id: int) -> aiosqlite.Row | 
     return await cursor.fetchone()
 
 
-async def close_poll(conn: aiosqlite.Connection, poll_id: int, *, closed_at: str) -> None:
+async def close_poll(
+    conn: aiosqlite.Connection, poll_id: int, *, closed_at: str, result_tier: str | None
+) -> None:
     await conn.execute(
-        "UPDATE polls SET status = 'closed', closed_at = ? WHERE id = ?", (closed_at, poll_id)
+        "UPDATE polls SET status = 'closed', closed_at = ?, result_tier = ? WHERE id = ?",
+        (closed_at, result_tier, poll_id),
     )
     await conn.commit()
 
@@ -267,6 +270,13 @@ async def list_polls(conn: aiosqlite.Connection, *, limit: int = 20) -> list[aio
         (limit,),
     )
     return await cursor.fetchall()
+
+
+async def get_most_recent_closed_poll(conn: aiosqlite.Connection) -> aiosqlite.Row | None:
+    cursor = await conn.execute(
+        "SELECT * FROM polls WHERE status = 'closed' ORDER BY closed_at DESC LIMIT 1"
+    )
+    return await cursor.fetchone()
 
 
 # ---------------------------------------------------------------------------
