@@ -143,10 +143,12 @@ oshinokobot/
 
 Not in the original plan — added after the v1 build, on request:
 
-- **`/results` slash command** — the bot's first slash command; shows the
-  most recently closed poll's results (grouped-by-category breakdown +
-  official dub) as a fresh message. See `architecture.md` → *Slash
-  commands*.
+- **`/results` slash command** — the bot's first slash command. First
+  version showed just the most recently closed poll's results; corrected
+  to the server's **cumulative** tier list instead — every closed poll's
+  character grouped by its official dub, across the server's whole
+  history, since that's the actual point of the daily poll (building up a
+  running tier list over time). See `architecture.md` → *Slash commands*.
 - **`/force-poll` slash command** — closes the current poll and posts a
   new one immediately, gated to members with Manage Server permission by
   default. Same underlying `post_new_poll()` the admin UI's manual

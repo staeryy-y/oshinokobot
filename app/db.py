@@ -317,11 +317,20 @@ async def list_polls(conn: aiosqlite.Connection, *, limit: int = 20) -> list[aio
     return await cursor.fetchall()
 
 
-async def get_most_recent_closed_poll(conn: aiosqlite.Connection) -> aiosqlite.Row | None:
+async def list_dubbed_characters(conn: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    """Every closed poll's character + its official dub, across the
+    server's whole history — backs the /results command's cumulative tier
+    list (as opposed to any single poll's outcome)."""
     cursor = await conn.execute(
-        "SELECT * FROM polls WHERE status = 'closed' ORDER BY closed_at DESC LIMIT 1"
+        """
+        SELECT characters.name AS character_name, polls.result_tier
+        FROM polls
+        JOIN characters ON characters.id = polls.character_id
+        WHERE polls.status = 'closed'
+        ORDER BY polls.closed_at ASC
+        """
     )
-    return await cursor.fetchone()
+    return await cursor.fetchall()
 
 
 # ---------------------------------------------------------------------------

@@ -34,7 +34,7 @@ def _voter_name(vote_row) -> str:
     return vote_row["display_name"] or f"user {vote_row['user_id']}"
 
 
-def _join_voter_names(names: list[str]) -> str:
+def _join_names(names: list[str]) -> str:
     if len(names) <= MAX_NAMES_PER_LINE:
         return ", ".join(names)
     shown = names[:MAX_NAMES_PER_LINE]
@@ -44,12 +44,14 @@ def _join_voter_names(names: list[str]) -> str:
 def _format_tier_results(tier_votes: list) -> str:
     """Grouped by tier, listing who voted for it — 'S: Bob, Jim' rather
     than just a count — for every tier row, not just the ones with
-    votes, so the shape stays a consistent 5-line block."""
+    votes, so the shape stays a consistent 5-line block. This is one
+    poll's voters, not the server's cumulative history — see
+    _format_cumulative_tier_list for that."""
     grouped: dict[str, list[str]] = {}
     for vote in tier_votes:
         grouped.setdefault(vote["tier"], []).append(_voter_name(vote))
     return "\n".join(
-        f"**{tier}**: {_join_voter_names(grouped[tier])}" if grouped.get(tier) else f"**{tier}**: —"
+        f"**{tier}**: {_join_names(grouped[tier])}" if grouped.get(tier) else f"**{tier}**: —"
         for tier in views.TIERS
     )
 
@@ -66,7 +68,27 @@ def _format_appeal_results(appeal_votes: list, tags_by_id: dict[int, str]) -> st
         tag_name = tags_by_id.get(vote["tag_id"], "unknown tag")
         grouped.setdefault(tag_name, []).append(_voter_name(vote))
     ranked = sorted(grouped.items(), key=lambda kv: len(kv[1]), reverse=True)
-    return "\n".join(f"**{tag_name}**: {_join_voter_names(names)}" for tag_name, names in ranked)
+    return "\n".join(f"**{tag_name}**: {_join_names(names)}" for tag_name, names in ranked)
+
+
+def _format_cumulative_tier_list(dubbed_rows: list) -> str:
+    """Every closed poll's character, grouped by its official dub, across
+    the server's whole history — the running tier list this bot is
+    actually for, as opposed to any single day's poll. Characters that
+    closed with no votes (result_tier is NULL) get their own trailing
+    line rather than being silently dropped."""
+    grouped: dict[str | None, list[str]] = {}
+    for row in dubbed_rows:
+        grouped.setdefault(row["result_tier"], []).append(row["character_name"])
+
+    lines = [
+        f"**{tier}**: {_join_names(grouped[tier])}" if grouped.get(tier) else f"**{tier}**: —"
+        for tier in views.TIERS
+    ]
+    undubbed = grouped.get(None, [])
+    if undubbed:
+        lines.append(f"**Not dubbed** (no votes): {_join_names(undubbed)}")
+    return "\n".join(lines)
 
 
 def _compute_result_tier(tier_counts: dict[str, int]) -> str | None:
@@ -277,40 +299,21 @@ class Polls(commands.Cog):
         await message.edit(embed=embed, view=closed_view)
 
     @app_commands.command(
-        name="results", description="Show the most recently finished character poll's results"
+        name="results", description="Show the server's cumulative tier list so far"
     )
     async def results(self, interaction: discord.Interaction) -> None:
-        poll = await db.get_most_recent_closed_poll(self.bot.db)
-        if poll is None:
+        dubbed = await db.list_dubbed_characters(self.bot.db)
+        if not dubbed:
             await interaction.response.send_message("No polls have finished yet.", ephemeral=True)
             return
 
-        character = await db.get_character(self.bot.db, poll["character_id"])
-        tier_votes = await db.get_tier_votes(self.bot.db, poll["id"])
-        appeal_votes = await db.get_appeal_votes(self.bot.db, poll["id"])
-        tags_by_id = {t["id"]: t["name"] for t in await db.list_tags(self.bot.db)}
-
-        embed = discord.Embed(title=character["name"], color=discord.Color.blurple())
-        if character["series"]:
-            embed.description = character["series"]
-        embed.add_field(
-            name="Final tier results", value=_format_tier_results(tier_votes), inline=False
+        embed = discord.Embed(
+            title="Tier list so far",
+            description=_format_cumulative_tier_list(dubbed),
+            color=discord.Color.blurple(),
         )
-        embed.add_field(
-            name="Final appeal results",
-            value=_format_appeal_results(appeal_votes, tags_by_id),
-            inline=False,
-        )
-        embed.add_field(
-            name="Officially dubbed", value=_format_dub(poll["result_tier"]), inline=False
-        )
-        embed.set_footer(text="Poll closed " + poll["closed_at"][:16].replace("T", " ") + " UTC")
-
-        filename = Path(character["image_path"]).name
-        embed.set_image(url=f"attachment://{filename}")
-        await interaction.response.send_message(
-            embed=embed, file=discord.File(character["image_path"], filename=filename)
-        )
+        embed.set_footer(text=f"{len(dubbed)} character{'s' if len(dubbed) != 1 else ''} polled")
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(
         name="force-poll", description="Close the current poll (if any) and post a new one now"

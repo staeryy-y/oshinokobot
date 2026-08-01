@@ -164,12 +164,17 @@ copy to every guild in `Config.guild_ids` via `copy_global_to`).
 `guild_ids` existed before any slash command did; these are what actually
 consume it.
 
-- **`/results`** (`Polls.results`) — posts the most recently *closed*
-  poll's results (grouped-by-category breakdown + official dub) as a
-  fresh, public message, reusing the same embed-building helpers
-  `_close_poll` uses so the two never drift apart. For whoever missed the
-  original poll, or just wants a recap without scrolling. Not restricted
-  to a specific channel or role.
+- **`/results`** (`Polls.results`) — posts the server's **cumulative**
+  tier list: every closed poll's character, grouped by its official dub,
+  across the server's whole history (`db.list_dubbed_characters` +
+  `_format_cumulative_tier_list`) — not just the most recently finished
+  poll. That was the first implementation and it was wrong: the point of
+  the daily poll is building up a running tier list over time, and a
+  single-poll recap doesn't show that. A closed poll with zero tier votes
+  (no dub) gets its own trailing "Not dubbed" line rather than being
+  silently dropped from the list. Open polls are excluded — only
+  `status = 'closed'` counts. Not restricted to a specific channel or
+  role.
 - **`/force-poll`** (`Polls.force_poll`) — closes whatever poll is
   currently open and posts a new one immediately, bypassing
   `poll_post_time`. A thin wrapper around the same `post_new_poll()` the
