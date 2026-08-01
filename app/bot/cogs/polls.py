@@ -73,6 +73,34 @@ class Polls(commands.Cog):
     async def _before_daily_poll_check(self) -> None:
         await self.bot.wait_until_ready()
 
+    async def post_new_poll(self) -> tuple[bool, str]:
+        """Manual override for the admin UI's "Post a new poll now" button —
+        bypasses poll_post_time entirely and reuses the same close-then-post
+        logic the scheduled check uses. Doesn't touch the scheduler's own
+        idempotency (comparing today's date against the most recent poll):
+        triggering manually before poll_post_time still fires today just
+        means the automatic check later sees a poll already exists for today
+        and skips, which is the desired "already posted today" behavior."""
+        if not self.bot.is_ready():
+            return False, "Bot is still connecting — try again in a few seconds."
+
+        config = await db.get_guild_config(self.bot.db)
+        if config["channel_id"] is None:
+            return False, "No channel configured — set one in Config first."
+
+        unused = await db.list_characters(self.bot.db, unused_only=True)
+        if not unused:
+            return False, "No unused characters left in the pool — upload more first."
+
+        await self._advance_daily_poll(config)
+
+        open_poll = await db.get_open_poll(self.bot.db)
+        if open_poll is None:
+            return False, "Poll didn't post — the configured channel may be unreachable (check logs)."
+
+        character = await db.get_character(self.bot.db, open_poll["character_id"])
+        return True, f"Posted a new poll for {character['name']}."
+
     async def _advance_daily_poll(self, config) -> None:
         open_poll = await db.get_open_poll(self.bot.db)
         if open_poll is not None:

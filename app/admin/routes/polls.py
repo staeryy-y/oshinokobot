@@ -17,6 +17,27 @@ async def polls_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "polls.html", {"polls": polls})
 
 
+@router.post("/polls/trigger", response_class=HTMLResponse)
+async def trigger_poll(request: Request) -> HTMLResponse:
+    bot = request.app.state.bot
+    if bot is None:
+        ok, message = False, "Discord bot isn't running (no DISCORD_BOT_TOKEN set) — can't post a poll."
+    else:
+        cog = bot.get_cog("Polls")
+        if cog is None:
+            ok, message = False, "Polls cog isn't loaded — check server logs."
+        else:
+            ok, message = await cog.post_new_poll()
+
+    conn = request.app.state.db
+    polls = await db.list_polls(conn, limit=50)
+    body = templates.env.get_template("_poll_trigger_result.html").render(
+        request=request, ok=ok, message=message
+    )
+    body += templates.env.get_template("_polls_list_oob.html").render(request=request, polls=polls)
+    return HTMLResponse(body)
+
+
 @router.get("/polls/{poll_id}", response_class=HTMLResponse)
 async def poll_detail_page(request: Request, poll_id: int) -> HTMLResponse:
     conn = request.app.state.db

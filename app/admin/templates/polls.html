@@ -2,25 +2,18 @@
 {% block title %}Polls — oshinokobot admin{% endblock %}
 {% block content %}
 <h1>Poll history</h1>
-{% if polls %}
-<table>
-  <thead><tr><th>Character</th><th>Status</th><th>Posted</th><th>Closed</th><th></th></tr></thead>
-  <tbody>
-    {% for p in polls %}
-    <tr>
-      <td>
-        {{ p.character_name }}
-        {% if p.character_series %}<span class="muted">({{ p.character_series }})</span>{% endif %}
-      </td>
-      <td>{{ p.status }}</td>
-      <td class="muted">{{ p.posted_at[:16].replace('T', ' ') }}</td>
-      <td class="muted">{{ p.closed_at[:16].replace('T', ' ') if p.closed_at else '—' }}</td>
-      <td><a class="button" href="/admin/polls/{{ p.id }}">View</a></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p class="empty">No polls yet — they post automatically once a channel is set in Config and at least one character is uploaded.</p>
-{% endif %}
+
+<div class="card">
+  <form hx-post="/admin/polls/trigger" hx-target="#poll-trigger-result" hx-swap="innerHTML">
+    <button type="submit">Post a new poll now</button>
+  </form>
+  <p class="muted">
+    Closes whatever poll is currently open and posts a fresh one immediately —
+    bypasses the daily post time. Needs a channel set in Config and at least
+    one unused character.
+  </p>
+  <div id="poll-trigger-result"></div>
+</div>
+
+{% include "_polls_list.html" %}
 {% endblock %}

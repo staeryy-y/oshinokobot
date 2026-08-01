@@ -1,0 +1,21 @@
+{% if polls %}
+<table>
+  <thead><tr><th>Character</th><th>Status</th><th>Posted</th><th>Closed</th><th></th></tr></thead>
+  <tbody>
+    {% for p in polls %}
+    <tr>
+      <td>
+        {{ p.character_name }}
+        {% if p.character_series %}<span class="muted">({{ p.character_series }})</span>{% endif %}
+      </td>
+      <td>{{ p.status }}</td>
+      <td class="muted">{{ p.posted_at[:16].replace('T', ' ') }}</td>
+      <td class="muted">{{ p.closed_at[:16].replace('T', ' ') if p.closed_at else '—' }}</td>
+      <td><a class="button" href="/admin/polls/{{ p.id }}">View</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No polls yet — they post automatically once a channel is set in Config and at least one character is uploaded.</p>
+{% endif %}

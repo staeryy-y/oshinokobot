@@ -7,7 +7,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Config:
     discord_token: str | None
-    guild_id: int | None
+    guild_ids: list[int]
     host: str
     port: int
     db_path: str
@@ -23,12 +23,16 @@ def load_config() -> Config:
     # running admin-only.
     token = os.environ.get("DISCORD_BOT_TOKEN") or None
 
-    guild_id_raw = os.environ.get("DISCORD_GUILD_ID", "").strip()
-    guild_id = int(guild_id_raw) if guild_id_raw else None
+    # Comma-separated, e.g. "123,456" — same convention as scheduler-bot.
+    # Not read anywhere yet (this bot has no slash commands to sync), but
+    # kept as a list rather than a single id since that's the shape any
+    # future guild-scoped command sync would actually need.
+    guild_ids_raw = os.environ.get("DISCORD_GUILD_ID", "")
+    guild_ids = [int(g.strip()) for g in guild_ids_raw.split(",") if g.strip()]
 
     return Config(
         discord_token=token,
-        guild_id=guild_id,
+        guild_ids=guild_ids,
         # HOST/PORT are injected by server-watcher; the defaults only matter for local runs.
         host=os.environ.get("HOST", "127.0.0.1"),
         port=int(os.environ.get("PORT", "8080")),

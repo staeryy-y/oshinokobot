@@ -177,12 +177,18 @@ safe to run on every deploy. `run.sh` runs it as its own step before
 ### Secrets
 
 `DISCORD_BOT_TOKEN` (optional — see *Single combined process* above) and
-`DISCORD_GUILD_ID` (optional — enables instant slash-command sync to that
-guild; global sync always runs too, on Discord's usual propagation delay)
-are read from `.env`, sourced by `run.sh` before migrations run. `.env` is
-gitignored and never touched by git — placed on the host once, out of
-band, the same way the SQLite file and media directory already live
-outside what git manages.
+`DISCORD_GUILD_ID` (optional, comma-separated if more than one — same
+convention as scheduler-bot's `guild_ids`) are read from `.env`, sourced by
+`run.sh` before migrations run. `.env` is gitignored and never touched by
+git — placed on the host once, out of band, the same way the SQLite file
+and media directory already live outside what git manages.
+
+`DISCORD_GUILD_ID` parses into `Config.guild_ids: list[int]` but isn't
+consumed anywhere yet — this bot has no slash commands, so there's nothing
+to guild-scope-sync. It's kept as a list (rather than a single id) purely
+so that shape doesn't need revisiting if a future command needs instant
+per-guild sync instead of waiting on Discord's global-sync propagation
+delay.
 
 ### Auth
 
