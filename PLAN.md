@@ -23,6 +23,41 @@ Directly modeled on `~/Projects/scheduler-bot`'s conventions (confirmed against 
 6. **Timezone/time-of-day** for the daily post: one configurable `poll_post_time` (HH:MM) + IANA timezone, stored in the same admin-editable config row as the channel ID. Defaults to something reasonable (e.g. 09:00 America/New_York) until the admin changes it.
 7. **Tier vote UI**: 5 buttons (S/A/B/C/D) with live vote-count labels, same in-place-update pattern as scheduler-bot's day/hour buttons (no separate "you voted" confirmation message). Appeal-tag vote is a `discord.ui.Select` dropdown (tags list, capped at Discord's 25-option limit — flagged below as a v1 limit).
 8. Only one open poll can exist at a time (matches "one per day"); no support for concurrent/backlog polls in v1.
+9. Bulk import (see below) commits valid rows immediately rather than staging them for review first — bad entries are reported per-row, not blocked pre-commit. If a "preview before commit" step turns out to matter in practice, that's a small addition on top of the same endpoint, not a redesign.
+
+## Bulk character import (Claude-assisted)
+
+Point: a Claude session can scrape character data (wiki, fandom pages, etc.) and hand the admin a single JSON file; the admin UI ingests it in one step instead of uploading characters one at a time.
+
+**Format** — top-level object wrapping an array, so a `version` or other metadata field can be added later without breaking the shape:
+
+```json
+{
+  "characters": [
+    {
+      "name": "Ai Hoshino",
+      "series": "Oshi no Ko",
+      "image_base64": "iVBORw0KGgoAAAANSUhEUgA...",
+      "image_mime": "image/png",
+      "source_url": "https://example.fandom.com/wiki/Ai_Hoshino"
+    }
+  ]
+}
+```
+
+- `name` and `image_base64` required; `series`, `image_mime`, `source_url` optional.
+- `image_mime` must be explicit (`image/png`, `image/jpeg`, `image/webp`, or `image/gif`) rather than sniffed from bytes — Claude producing the file knows the source content type, and guessing from magic bytes is a needless failure mode. Defaults to `image/png` if omitted.
+- `source_url` is stored on the character row purely for provenance/audit (where did this come from), not used for anything functional.
+- Raw base64, no `data:` URI prefix.
+
+**Endpoint** — `GET/POST /admin/characters/import`:
+- GET renders a form with both a file-upload input (`.json`) and a paste-in textarea — either path accepted, whichever's more convenient in the moment.
+- POST parses whichever was provided, then processes every entry in one pass rather than failing the whole batch on the first bad row:
+  - **Duplicate check**: case-insensitive match on `(name, series)` against existing characters → skipped, reported, not an error.
+  - **Malformed entry** (missing `name`/`image_base64`, invalid base64, unsupported mime) → reported as an error with the reason, rest of the batch still processes.
+  - **Valid + new** → base64 decoded, written to `media/` with an extension derived from `image_mime`, row inserted.
+- Response is an htmx partial: a results table (one row per input entry — name, status, detail) plus the refreshed character list/count. No separate confirm step.
+- Batch size capped (e.g. 200 entries per request) purely to keep one request's memory/DB-transaction footprint sane — not a hard product constraint, just an implementation guardrail.
 
 ## Data model
 
@@ -33,7 +68,8 @@ users                                  -- admin accounts, CLI-created only
   id, username (unique), password_hash, created_at
 
 characters
-  id, name, series (nullable), image_path, uploaded_by -> users.id (nullable), created_at
+  id, name, series (nullable), image_path, source_url (nullable),
+  uploaded_by -> users.id (nullable), created_at
 
 archetype_tags
   id, name (unique), created_at
@@ -84,7 +120,8 @@ oshinokobot/
       server.py             # FastAPI app factory + lifespan (starts bot task, holds shared db conn)
       auth.py                # HTTP Basic dependency
       routes/
-        characters.py, tags.py, polls.py, config.py
+        characters.py         # upload, list, delete, + bulk JSON import
+        tags.py, polls.py, config.py
       templates/             # Jinja2 + htmx partials
       static/
     media/                   # uploaded images — gitignored, persists in working dir
@@ -96,7 +133,7 @@ oshinokobot/
 
 1. **Scaffold + spec conformance**: `run.sh`, `watcher.config.json`, `config.py`, `db.py`, migration runner, `/healthz`, logging — get a bare FastAPI app deploying green on watcher before any features exist.
 2. **Migrations + CLI user creation** — schema above, `python -m cli.create_user`.
-3. **Admin UI: characters** — upload (name, series, image), list, delete. This unblocks having data to poll on.
+3. **Admin UI: characters** — upload (name, series, image), list, delete, and bulk JSON import (see above). This unblocks having data to poll on.
 4. **Admin UI: tags + guild config** — manage archetype tags, set channel/post-time.
 5. **Discord bot**: gateway client, daily scheduling loop, poll posting (embed + image attachment + View), vote interaction handlers, auto-close-on-next-post logic.
 6. **Admin UI: poll results/history** — view past polls, tallies, and (per assumption 4) not raw per-user votes unless that's wanted for anti-cheat/audit — worth confirming when we get there.
