@@ -73,15 +73,26 @@ stateDiagram-v2
   not on a separate 24-hour timer. The previous message gets edited in
   place — final tallies added as embed fields, the view rebuilt with every
   component disabled — rather than deleted or replaced.
-- **Voting**: both questions are independent selections on the same
-  message (`app/bot/views.py::PollView`) — a `discord.ui.Select` for the
-  appeal tag, five `discord.ui.Button`s for the tier. Each vote is an
-  upsert (`PRIMARY KEY (poll_id, user_id)` on both vote tables) — re-voting
+- **Voting**: both questions are independent button groups on the same
+  message (`app/bot/views.py::PollView`) — one `discord.ui.Button` per
+  archetype tag, plus five more for the tier. Each vote is an upsert
+  (`PRIMARY KEY (poll_id, user_id)` on both vote tables) — re-voting
   changes your answer, it doesn't stack. Every click rebuilds and
-  re-renders the whole view via `edit_message`, so button/select labels
-  carry live counts — the visible state change *is* the confirmation, no
+  re-renders the whole view via `edit_message`, so button labels carry
+  live counts — the visible state change *is* the confirmation, no
   separate ephemeral "you voted for X" reply (same reasoning scheduler-bot
   used for its day/hour buttons).
+- **Layout**: tag buttons fill rows 0-3 (5 per row), tier buttons always
+  sit alone on row 4. That full empty row of gap is what makes "these are
+  two different questions" visually obvious, backed up by two embed
+  fields above the image — "Who would this appeal to?" and "What tier
+  would you rate this character?" — that actually name the two questions.
+  This started as a `discord.ui.Select` dropdown for the tag question;
+  switched to one button per tag specifically so the two groups could be
+  told apart at a glance, which a single dropdown row didn't give. A
+  message caps out at 25 components total, and the tier row always claims
+  5 of them, so tag buttons cap at **20** (was 25 as a dropdown) — past
+  that, the poll only offers the first 20 (see *Open items*).
 - **Restart safety**: `Polls.cog_load` re-registers a `PollView` for
   whatever poll is currently `open`, with current counts, so a bot restart
   mid-poll doesn't orphan the buttons on the still-live message.
@@ -235,8 +246,8 @@ app login rather than a browser-native credential prompt).
 - **Empty character pool**: if the daily check fires and every character
   has already been posted, it logs a warning and skips — no recycling of
   old characters, no admin-facing alert yet.
-- **>25 archetype tags**: a poll can only show Discord's select-menu limit
-  (25) at a time; `TagSelect` truncates rather than paginating.
+- **>20 archetype tags**: a poll can only show `MAX_TAG_BUTTONS` (20) at a
+  time — `PollView` truncates rather than paginating.
 - **Multi-guild**: explicitly out of scope for now (see PLAN.md);
   `guild_config` would become a table instead of a singleton row if that
   changes.

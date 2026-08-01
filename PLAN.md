@@ -21,7 +21,7 @@ Directly modeled on `~/Projects/scheduler-bot`'s conventions (confirmed against 
 4. ~~**Auth**: literal HTTP Basic Auth (browser-native prompt) on all `/admin/*` routes~~ — **superseded**: replaced with a real login page + server-side sessions (SQLite-backed, opaque cookie) after the initial build. See `architecture.md` for the as-built version. Password hashing (stdlib `hashlib.pbkdf2_hmac`, no bcrypt/argon2 C-extension dependency) and CLI-only user creation via `python -m cli.create_user` are unchanged.
 5. **Health check**: `/healthz` is a small unauthenticated JSON `200 OK` route, separate from the admin UI (which lives under `/admin/*` behind auth) — so watcher's poller never gets bounced through a login redirect or counted against admin traffic.
 6. **Timezone/time-of-day** for the daily post: one configurable `poll_post_time` (HH:MM) + IANA timezone, stored in the same admin-editable config row as the channel ID. Defaults to something reasonable (e.g. 09:00 America/New_York) until the admin changes it.
-7. **Tier vote UI**: 5 buttons (S/A/B/C/D) with live vote-count labels, same in-place-update pattern as scheduler-bot's day/hour buttons (no separate "you voted" confirmation message). Appeal-tag vote is a `discord.ui.Select` dropdown (tags list, capped at Discord's 25-option limit — flagged below as a v1 limit).
+7. **Tier vote UI**: 5 buttons (S/A/B/C/D) with live vote-count labels, same in-place-update pattern as scheduler-bot's day/hour buttons (no separate "you voted" confirmation message). ~~Appeal-tag vote is a `discord.ui.Select` dropdown~~ — **superseded**: switched to one button per tag after initial build, for a clearer visual split between the two questions (tag buttons fill rows 0-3, tier buttons always sit alone on row 4 — a full row of gap makes the grouping obvious without needing anything beyond discord.py's classic layout). Caps at 20 tags now, not 25 — a message maxes out at 25 components total and the tier row always claims 5 of them. See `architecture.md`.
 8. Only one open poll can exist at a time (matches "one per day"); no support for concurrent/backlog polls in v1.
 9. Bulk import (see below) commits valid rows immediately rather than staging them for review first — bad entries are reported per-row, not blocked pre-commit. If a "preview before commit" step turns out to matter in practice, that's a small addition on top of the same endpoint, not a redesign.
 
@@ -115,7 +115,7 @@ oshinokobot/
       client.py             # OshinokoBot(commands.Bot), started as asyncio.create_task from lifespan
       cogs/
         polls.py            # daily scheduling loop, vote interaction handlers
-      views.py              # tag Select + tier buttons, live count labels
+      views.py              # tag buttons + tier buttons, live count labels, row layout
     admin/
       server.py             # FastAPI app factory + lifespan (starts bot task, holds shared db conn)
       auth.py                # session-based login dependency (see architecture.md)

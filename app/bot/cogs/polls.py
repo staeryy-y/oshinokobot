@@ -131,6 +131,15 @@ class Polls(commands.Cog):
         embed = discord.Embed(title=character["name"], color=discord.Color.blurple())
         if character["series"]:
             embed.description = character["series"]
+        # Labels the two button groups below — the row gap between them
+        # (tags fill rows 0-3, tiers always sit alone on row 4) is the visual
+        # separation; these headers are what actually says what each is for.
+        embed.add_field(name="Who would this appeal to?", value="Tap a tag below.", inline=False)
+        embed.add_field(
+            name="What tier would you rate this character?",
+            value="Tap S–D below.",
+            inline=False,
+        )
         filename = Path(character["image_path"]).name
         embed.set_image(url=f"attachment://{filename}")
 
@@ -163,9 +172,10 @@ class Polls(commands.Cog):
             logger.warning("could not fetch poll #%s's message to close it", poll["id"])
             return
 
+        tags = await db.list_tags(self.bot.db)
         tier_counts = await db.get_tier_vote_counts(self.bot.db, poll["id"])
         appeal_counts = await db.get_appeal_vote_counts(self.bot.db, poll["id"])
-        tags_by_id = {t["id"]: t["name"] for t in await db.list_tags(self.bot.db)}
+        tags_by_id = {t["id"]: t["name"] for t in tags}
 
         embed = message.embeds[0] if message.embeds else discord.Embed()
         embed.add_field(
@@ -178,5 +188,10 @@ class Polls(commands.Cog):
         )
         embed.set_footer(text="Poll closed")
 
-        closed_view = views.PollView(poll["id"], [], disabled=True)
+        # Passing the real tags/counts (not empty) so the disabled buttons
+        # left on the message still reflect the final state, matching what
+        # the "Final results" fields above them say.
+        closed_view = views.PollView(
+            poll["id"], tags, tier_counts=tier_counts, appeal_counts=appeal_counts, disabled=True
+        )
         await message.edit(embed=embed, view=closed_view)
