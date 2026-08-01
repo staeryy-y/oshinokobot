@@ -68,17 +68,31 @@ stateDiagram-v2
   `polls` yet (`db.pick_random_unused_character`). Once a character is
   posted, it's permanently "used," even if the poll technically failed
   (e.g. wrong channel) — there's no re-queue mechanism in v1 (see Open
-  items).
+  items). Optionally narrowed further by `guild_config.active_series` —
+  see *Game filter* below — but "used" status itself is tracked globally,
+  independent of that filter: narrowing to one game and back to all games
+  never un-uses a character that already got its poll.
 - **Closing**: happens as the *first step* of advancing to the next poll,
   not on a separate 24-hour timer. The previous message gets edited in
-  place — final tallies added as embed fields, the view rebuilt with every
-  component disabled — rather than deleted or replaced.
+  place — final results added as embed fields, the view rebuilt with every
+  component disabled — rather than deleted or replaced. Results are
+  grouped by category, listing who picked it (`**A**: Bob, Jim`), not
+  just a per-category count — same for both questions (`_format_tier_
+  results`/`_format_appeal_results` in `app/bot/cogs/polls.py`), sourced
+  from the same per-voter rows the admin UI's "Votes by user" table uses.
+  Tiers with zero votes still get their own line (`**B**: —`) so the
+  block stays a consistent 5-line shape; appeal tags with zero votes are
+  omitted rather than filling the field with empty rows, since there can
+  be up to 20 of them. A line with more than 10 names truncates to
+  `..., +N more` — a safety margin against Discord's 1024-character
+  embed-field limit on a very active poll, not something expected to
+  matter at this bot's normal scale.
 - **Official dub**: closing also computes `polls.result_tier`
   (`_compute_result_tier` in `app/bot/cogs/polls.py`) — whichever tier got
   the most votes. Zero tier votes means no dub at all (`NULL`), not a
   default one; a tie among the top tier(s) is broken with `random.choice`
   among *only* the tied tiers, never all five. Shown as an "Officially
-  dubbed" embed field alongside the final tallies, and in the admin UI
+  dubbed" embed field alongside the results above, and in the admin UI
   (`/admin/polls` list + poll detail page).
 - **Voting**: both questions are independent button groups on the same
   message (`app/bot/views.py::PollView`) — one `discord.ui.Button` per
@@ -104,20 +118,70 @@ stateDiagram-v2
   whatever poll is currently `open`, with current counts, so a bot restart
   mid-poll doesn't orphan the buttons on the still-live message.
 
+## Game filter
+
+`guild_config.active_series` (Config → "Which games to pull characters
+from" on the admin site) restricts the daily pool to specific games/shows
+— reusing `characters.series` rather than adding a separate column, since
+that's already exactly "which game/show this character is from" (the
+bulk-import format already populates it that way).
+
+- **Default is unrestricted** (`active_series` `NULL`): every character is
+  eligible regardless of `series`, including ones with no `series` set at
+  all. This is also the state new games stay in automatically — nothing
+  needs updating when a fresh series shows up, as long as nobody's ever
+  narrowed the filter.
+- **Restricting it is an explicit allowlist**: picking "Only selected
+  games" and checking specific series stores that exact list
+  (JSON-encoded in the `active_series` column). A `series` value not on
+  that list — including one added *after* the list was saved — is
+  ineligible until the admin comes back and adds it. This is deliberately
+  not "auto-include new games unless excluded"; an admin who narrowed the
+  pool on purpose shouldn't have it silently widen itself back out.
+- **The "already used" rule still applies inside the filter**: a
+  character that already got its poll never comes back, whether or not a
+  filter is active — narrowing to one game just narrows which *unused*
+  characters are eligible each time, it doesn't touch the used/unused
+  status itself (see *Character selection* above). So restricting to one
+  game means working through that game's characters exactly once each,
+  same guarantee as the unrestricted pool.
+- **Exhausting the filtered pool behaves like exhausting the whole pool
+  today**: logs a warning and skips that day's poll (naming which game(s)
+  are active, so it's obvious from the logs why), rather than recycling
+  already-used characters from that game or silently falling back to
+  other games. No auto-recycling exists yet regardless of filter state
+  (see *Open items*).
+- Saving "Only selected" with nothing actually checked is rejected with a
+  validation error rather than silently behaving like "no games" (which
+  would just mean every future poll skips) — has to be a deliberate choice
+  through "All games" instead.
+
 ## Slash commands
 
-`/results` (`Polls.results`) is the bot's first — and so far only — slash
-command: posts the most recently *closed* poll's results (final tallies +
-official dub) as a fresh, public message, reusing the same embed-building
-helpers `_close_poll` uses so the two never drift apart. It exists for
-whoever missed the original poll, or just wants a recap without scrolling.
-Not restricted to a specific channel or role.
+`OshinokoBot.setup_hook` syncs the command tree (`self.tree.sync()`,
+global — up to Discord's usual ~1hr propagation delay — plus an instant
+copy to every guild in `Config.guild_ids` via `copy_global_to`).
+`guild_ids` existed before any slash command did; these are what actually
+consume it.
 
-Adding it meant `OshinokoBot.setup_hook` now actually syncs the command
-tree (`self.tree.sync()`, global — up to Discord's usual ~1hr propagation
-delay — plus an instant copy to every guild in `Config.guild_ids` via
-`copy_global_to`). `guild_ids` existed before this but had nothing to
-consume it; this is that consumer.
+- **`/results`** (`Polls.results`) — posts the most recently *closed*
+  poll's results (grouped-by-category breakdown + official dub) as a
+  fresh, public message, reusing the same embed-building helpers
+  `_close_poll` uses so the two never drift apart. For whoever missed the
+  original poll, or just wants a recap without scrolling. Not restricted
+  to a specific channel or role.
+- **`/force-poll`** (`Polls.force_poll`) — closes whatever poll is
+  currently open and posts a new one immediately, bypassing
+  `poll_post_time`. A thin wrapper around the same `post_new_poll()` the
+  admin UI's "Post a new poll now" button calls (one code path for
+  "manually trigger a poll," reachable from either place), deferred +
+  ephemeral since closing/posting can take longer than Discord's 3-second
+  initial-response window. Gated with
+  `@app_commands.default_permissions(manage_guild=True)` — unlike
+  `/results`, this is disruptive (cuts the current poll's voting window
+  short), so it defaults to members with Manage Server permission rather
+  than anyone; a guild's own admins can loosen or tighten that further via
+  Discord's Integrations settings.
 
 ## Data model
 
@@ -138,7 +202,9 @@ archetype_tags
   id, name (unique), created_at
 
 guild_config                            -- singleton row (id = 1)
-  channel_id (nullable until set), poll_post_time, poll_timezone
+  channel_id (nullable until set), poll_post_time, poll_timezone,
+  active_series (nullable — JSON array; NULL means all games, see
+  Game filter below)
 
 polls
   id, character_id -> characters.id, channel_id, message_id (nullable

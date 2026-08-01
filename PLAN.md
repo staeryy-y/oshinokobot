@@ -144,12 +144,29 @@ oshinokobot/
 Not in the original plan — added after the v1 build, on request:
 
 - **`/results` slash command** — the bot's first slash command; shows the
-  most recently closed poll's results (tallies + official dub) as a fresh
-  message. See `architecture.md` → *Slash commands*.
+  most recently closed poll's results (grouped-by-category breakdown +
+  official dub) as a fresh message. See `architecture.md` → *Slash
+  commands*.
+- **`/force-poll` slash command** — closes the current poll and posts a
+  new one immediately, gated to members with Manage Server permission by
+  default. Same underlying `post_new_poll()` the admin UI's manual
+  trigger button already used — one code path, two front doors. See
+  `architecture.md` → *Slash commands*.
 - **Official dub**: closing a poll now computes `polls.result_tier` —
   whichever tier got the most votes, `NULL` if there were zero tier votes
   (not defaulted to any tier), ties broken randomly among only the tied
   tiers. See `architecture.md` → *Poll lifecycle*.
+- **Results text is grouped by category**, not just counts — `**A**: Bob,
+  Jim` rather than `**A**: 2`. Applies to both the closed-poll embed and
+  `/results`; the admin site's poll detail page already had a per-voter
+  table so it was left as-is. See `architecture.md` → *Poll lifecycle*.
+- **Game filter**: `guild_config.active_series` restricts the daily pool
+  to specific games/series (reusing `characters.series`, no new column
+  there). Default is unrestricted — new games stay included automatically
+  until an admin explicitly narrows it via the admin UI, at which point
+  it's a sticky allowlist. The existing "never repick a used character"
+  rule applies inside whatever the active filter is. See `architecture.md`
+  → *Game filter*.
 
 ## Open for later (not blocking v1)
 

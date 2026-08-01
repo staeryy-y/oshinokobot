@@ -23,15 +23,50 @@ def _poll_local_date(poll_row, tz: ZoneInfo) -> date:
     return posted_at.astimezone(tz).date()
 
 
-def _format_tier_results(counts: dict[str, int]) -> str:
-    return "\n".join(f"**{t}**: {counts.get(t, 0)}" for t in views.TIERS)
+# Caps how many names one line lists before falling back to "+N more" —
+# a safety net against a single embed field blowing past Discord's 1024
+# character limit on a poll with a lot of voters piled onto one tier/tag,
+# not something expected to matter at this bot's normal scale.
+MAX_NAMES_PER_LINE = 10
 
 
-def _format_appeal_results(counts: dict[int, int], tags_by_id: dict[int, str]) -> str:
-    if not counts:
+def _voter_name(vote_row) -> str:
+    return vote_row["display_name"] or f"user {vote_row['user_id']}"
+
+
+def _join_voter_names(names: list[str]) -> str:
+    if len(names) <= MAX_NAMES_PER_LINE:
+        return ", ".join(names)
+    shown = names[:MAX_NAMES_PER_LINE]
+    return ", ".join(shown) + f", +{len(names) - MAX_NAMES_PER_LINE} more"
+
+
+def _format_tier_results(tier_votes: list) -> str:
+    """Grouped by tier, listing who voted for it — 'S: Bob, Jim' rather
+    than just a count — for every tier row, not just the ones with
+    votes, so the shape stays a consistent 5-line block."""
+    grouped: dict[str, list[str]] = {}
+    for vote in tier_votes:
+        grouped.setdefault(vote["tier"], []).append(_voter_name(vote))
+    return "\n".join(
+        f"**{tier}**: {_join_voter_names(grouped[tier])}" if grouped.get(tier) else f"**{tier}**: —"
+        for tier in views.TIERS
+    )
+
+
+def _format_appeal_results(appeal_votes: list, tags_by_id: dict[int, str]) -> str:
+    """Grouped by tag, listing who voted for it. Unlike tier results, only
+    tags that actually got a vote are shown — with up to 25 possible tags,
+    a full always-show-every-row listing would get noisy fast — ranked by
+    voter count, most-picked first."""
+    if not appeal_votes:
         return "No votes"
-    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
-    return "\n".join(f"**{tags_by_id.get(tag_id, 'unknown')}**: {c}" for tag_id, c in ranked)
+    grouped: dict[str, list[str]] = {}
+    for vote in appeal_votes:
+        tag_name = tags_by_id.get(vote["tag_id"], "unknown tag")
+        grouped.setdefault(tag_name, []).append(_voter_name(vote))
+    ranked = sorted(grouped.items(), key=lambda kv: len(kv[1]), reverse=True)
+    return "\n".join(f"**{tag_name}**: {_join_voter_names(names)}" for tag_name, names in ranked)
 
 
 def _compute_result_tier(tier_counts: dict[str, int]) -> str | None:
@@ -107,8 +142,16 @@ class Polls(commands.Cog):
         if config["channel_id"] is None:
             return False, "No channel configured — set one in Config first."
 
-        unused = await db.list_characters(self.bot.db, unused_only=True)
+        active_series = db.parse_active_series(config)
+        unused = await db.list_characters(
+            self.bot.db, unused_only=True, active_series=active_series
+        )
         if not unused:
+            if active_series:
+                return False, (
+                    "No unused characters left for the active game(s) "
+                    f"({', '.join(active_series)}) — upload more, or widen the game filter in Config."
+                )
             return False, "No unused characters left in the pool — upload more first."
 
         await self._advance_daily_poll(config)
@@ -125,9 +168,16 @@ class Polls(commands.Cog):
         if open_poll is not None:
             await self._close_poll(open_poll)
 
-        character = await db.pick_random_unused_character(self.bot.db)
+        active_series = db.parse_active_series(config)
+        character = await db.pick_random_unused_character(self.bot.db, active_series=active_series)
         if character is None:
-            logger.warning("no unused characters left in the pool — skipping today's poll")
+            if active_series:
+                logger.warning(
+                    "no unused characters left for active game(s) %s — skipping today's poll",
+                    active_series,
+                )
+            else:
+                logger.warning("no unused characters left in the pool — skipping today's poll")
             return
 
         channel = self.bot.get_channel(config["channel_id"])
@@ -177,6 +227,12 @@ class Polls(commands.Cog):
 
     async def _close_poll(self, poll) -> None:
         tags = await db.list_tags(self.bot.db)
+        # Raw per-voter rows for the "who voted for what" text below;
+        # counts separately for _compute_result_tier and the closed
+        # view's button labels (buttons only have room for a number, not
+        # a roster of names).
+        tier_votes = await db.get_tier_votes(self.bot.db, poll["id"])
+        appeal_votes = await db.get_appeal_votes(self.bot.db, poll["id"])
         tier_counts = await db.get_tier_vote_counts(self.bot.db, poll["id"])
         appeal_counts = await db.get_appeal_vote_counts(self.bot.db, poll["id"])
         tags_by_id = {t["id"]: t["name"] for t in tags}
@@ -202,11 +258,11 @@ class Polls(commands.Cog):
 
         embed = message.embeds[0] if message.embeds else discord.Embed()
         embed.add_field(
-            name="Final tier results", value=_format_tier_results(tier_counts), inline=False
+            name="Final tier results", value=_format_tier_results(tier_votes), inline=False
         )
         embed.add_field(
             name="Final appeal results",
-            value=_format_appeal_results(appeal_counts, tags_by_id),
+            value=_format_appeal_results(appeal_votes, tags_by_id),
             inline=False,
         )
         embed.add_field(name="Officially dubbed", value=_format_dub(result_tier), inline=False)
@@ -230,19 +286,19 @@ class Polls(commands.Cog):
             return
 
         character = await db.get_character(self.bot.db, poll["character_id"])
-        tier_counts = await db.get_tier_vote_counts(self.bot.db, poll["id"])
-        appeal_counts = await db.get_appeal_vote_counts(self.bot.db, poll["id"])
+        tier_votes = await db.get_tier_votes(self.bot.db, poll["id"])
+        appeal_votes = await db.get_appeal_votes(self.bot.db, poll["id"])
         tags_by_id = {t["id"]: t["name"] for t in await db.list_tags(self.bot.db)}
 
         embed = discord.Embed(title=character["name"], color=discord.Color.blurple())
         if character["series"]:
             embed.description = character["series"]
         embed.add_field(
-            name="Final tier results", value=_format_tier_results(tier_counts), inline=False
+            name="Final tier results", value=_format_tier_results(tier_votes), inline=False
         )
         embed.add_field(
             name="Final appeal results",
-            value=_format_appeal_results(appeal_counts, tags_by_id),
+            value=_format_appeal_results(appeal_votes, tags_by_id),
             inline=False,
         )
         embed.add_field(
@@ -255,3 +311,15 @@ class Polls(commands.Cog):
         await interaction.response.send_message(
             embed=embed, file=discord.File(character["image_path"], filename=filename)
         )
+
+    @app_commands.command(
+        name="force-poll", description="Close the current poll (if any) and post a new one now"
+    )
+    @app_commands.default_permissions(manage_guild=True)
+    async def force_poll(self, interaction: discord.Interaction) -> None:
+        # Deferred: post_new_poll closes the previous message (an edit) and
+        # sends a new one with a file attachment, which can take longer than
+        # Discord's 3-second initial-response window.
+        await interaction.response.defer(ephemeral=True)
+        ok, message = await self.post_new_poll()
+        await interaction.followup.send(message, ephemeral=True)

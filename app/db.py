@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import aiosqlite
@@ -132,19 +133,38 @@ async def create_character(
 
 
 async def list_characters(
-    conn: aiosqlite.Connection, *, unused_only: bool = False
+    conn: aiosqlite.Connection,
+    *,
+    unused_only: bool = False,
+    active_series: list[str] | None = None,
 ) -> list[aiosqlite.Row]:
+    """active_series narrows to just those games/series when given a
+    non-empty list (only meaningful combined with unused_only — it's the
+    filter the daily poll actually draws from; the admin character list
+    always shows everything regardless)."""
+    params: list = []
     if unused_only:
         query = """
             SELECT characters.* FROM characters
             LEFT JOIN polls ON polls.character_id = characters.id
             WHERE polls.id IS NULL
-            ORDER BY characters.created_at DESC
         """
+        if active_series:
+            placeholders = ",".join("?" for _ in active_series)
+            query += f" AND characters.series IN ({placeholders})"
+            params.extend(active_series)
+        query += " ORDER BY characters.created_at DESC"
     else:
         query = "SELECT * FROM characters ORDER BY created_at DESC"
-    cursor = await conn.execute(query)
+    cursor = await conn.execute(query, params)
     return await cursor.fetchall()
+
+
+async def list_distinct_series(conn: aiosqlite.Connection) -> list[str]:
+    cursor = await conn.execute(
+        "SELECT DISTINCT series FROM characters WHERE series IS NOT NULL ORDER BY series"
+    )
+    return [row["series"] for row in await cursor.fetchall()]
 
 
 async def get_character(conn: aiosqlite.Connection, character_id: int) -> aiosqlite.Row | None:
@@ -170,16 +190,21 @@ async def delete_character(conn: aiosqlite.Connection, character_id: int) -> Non
     await conn.commit()
 
 
-async def pick_random_unused_character(conn: aiosqlite.Connection) -> aiosqlite.Row | None:
-    cursor = await conn.execute(
-        """
+async def pick_random_unused_character(
+    conn: aiosqlite.Connection, *, active_series: list[str] | None = None
+) -> aiosqlite.Row | None:
+    query = """
         SELECT characters.* FROM characters
         LEFT JOIN polls ON polls.character_id = characters.id
         WHERE polls.id IS NULL
-        ORDER BY RANDOM()
-        LIMIT 1
-        """
-    )
+    """
+    params: list = []
+    if active_series:
+        placeholders = ",".join("?" for _ in active_series)
+        query += f" AND characters.series IN ({placeholders})"
+        params.extend(active_series)
+    query += " ORDER BY RANDOM() LIMIT 1"
+    cursor = await conn.execute(query, params)
     return await cursor.fetchone()
 
 
@@ -195,16 +220,36 @@ async def get_guild_config(conn: aiosqlite.Connection) -> aiosqlite.Row:
     return row
 
 
+def parse_active_series(guild_config_row) -> list[str] | None:
+    """None means unrestricted (all games) — the default, and what an
+    empty/never-set active_series column means. A non-empty list is an
+    explicit allowlist; storing an empty list would be indistinguishable
+    from "unrestricted" here, so update_guild_config normalizes an empty
+    selection back to NULL rather than storing `[]`."""
+    raw = guild_config_row["active_series"]
+    return json.loads(raw) if raw else None
+
+
 async def update_guild_config(
     conn: aiosqlite.Connection,
     *,
     channel_id: int | None,
     poll_post_time: str,
     poll_timezone: str,
+    active_series: list[str] | None,
 ) -> None:
     await conn.execute(
-        "UPDATE guild_config SET channel_id = ?, poll_post_time = ?, poll_timezone = ? WHERE id = 1",
-        (channel_id, poll_post_time, poll_timezone),
+        """
+        UPDATE guild_config
+        SET channel_id = ?, poll_post_time = ?, poll_timezone = ?, active_series = ?
+        WHERE id = 1
+        """,
+        (
+            channel_id,
+            poll_post_time,
+            poll_timezone,
+            json.dumps(active_series) if active_series else None,
+        ),
     )
     await conn.commit()
 

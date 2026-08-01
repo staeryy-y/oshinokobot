@@ -14,6 +14,34 @@
     <input type="text" id="poll_timezone" name="poll_timezone" value="{{ guild_config.poll_timezone }}">
     <p class="muted">e.g. <code>America/New_York</code>, <code>Europe/London</code>, <code>Asia/Tokyo</code></p>
 
+    <label>Which games to pull characters from</label>
+    <p class="muted">
+      New games/series stay included automatically as long as this is left on "All games" —
+      switching to "Only selected" is an explicit allowlist, so anything uploaded later needs
+      adding here too.
+    </p>
+    <label>
+      <input type="radio" name="series_mode" value="all" {{ 'checked' if not active_series }}>
+      All games
+    </label>
+    <label>
+      <input type="radio" name="series_mode" value="selected" {{ 'checked' if active_series }}>
+      Only selected games:
+    </label>
+    {% if all_series %}
+    <div style="padding-left: 1.5rem;">
+      {% for s in all_series %}
+      <label>
+        <input type="checkbox" name="series" value="{{ s }}"
+               {{ 'checked' if active_series and s in active_series }}>
+        {{ s }}
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted" style="padding-left: 1.5rem;">No games yet — upload characters with a series/game set first.</p>
+    {% endif %}
+
     <button type="submit">Save</button>
   </form>
 </div>
