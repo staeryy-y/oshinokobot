@@ -48,6 +48,23 @@ nav a {
   font-size: 0.95rem;
 }
 
+.nav-logout {
+  margin: 0 0 0 auto;
+}
+
+button.linklike {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+button.linklike:hover { color: var(--fg); }
+
 nav a:hover { color: var(--accent); }
 
 nav strong { margin-right: 0.5rem; }
@@ -77,6 +94,7 @@ form.stacked label {
 }
 
 form.stacked input[type="text"],
+form.stacked input[type="password"],
 form.stacked input[type="file"],
 form.stacked textarea,
 form.stacked select {

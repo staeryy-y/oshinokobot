@@ -18,8 +18,8 @@ Directly modeled on `~/Projects/scheduler-bot`'s conventions (confirmed against 
 1. **Poll lifecycle**: a poll stays open until the *next* day's poll job runs, at which point it auto-closes (final tallies locked, message edited to show results) and the new poll posts. No manual `/close` command, no fixed 24h timer — simplest MVP, avoids a separate expiry scheduler.
 2. **Voting**: one vote per user per question, changeable until the poll closes (re-picking updates your vote, doesn't stack). Both votes required to fully participate, but they're independent — voting on tier doesn't require voting on appeal, or vice versa.
 3. **Images**: admin uploads image files directly (not URLs) via the FastAPI form; stored on local disk under a `media/` dir in the persistent working directory (gitignored, survives redeploys — same pattern as the SQLite file). The bot attaches the file directly to the Discord message (`discord.File`) rather than needing a public URL, so the admin site never needs to be internet-reachable for images to show up.
-4. **Auth**: literal HTTP Basic Auth (browser-native prompt) on all `/admin/*` routes, checked per-request against a `users` table. Passwords hashed with stdlib `hashlib.pbkdf2_hmac` (no bcrypt/argon2 C-extension dependency — keeps us inside watcher's guaranteed toolset, which doesn't promise a compiler). Users created only via `python -m cli.create_user` (prompts username + password with `getpass`, never accepts a password as a CLI arg).
-5. **Health check**: `/healthz` is a small unauthenticated JSON `200 OK` route, separate from the admin UI (which lives under `/admin/*` behind auth) — so watcher's poller never triggers a Basic Auth prompt or gets counted against admin traffic.
+4. ~~**Auth**: literal HTTP Basic Auth (browser-native prompt) on all `/admin/*` routes~~ — **superseded**: replaced with a real login page + server-side sessions (SQLite-backed, opaque cookie) after the initial build. See `architecture.md` for the as-built version. Password hashing (stdlib `hashlib.pbkdf2_hmac`, no bcrypt/argon2 C-extension dependency) and CLI-only user creation via `python -m cli.create_user` are unchanged.
+5. **Health check**: `/healthz` is a small unauthenticated JSON `200 OK` route, separate from the admin UI (which lives under `/admin/*` behind auth) — so watcher's poller never gets bounced through a login redirect or counted against admin traffic.
 6. **Timezone/time-of-day** for the daily post: one configurable `poll_post_time` (HH:MM) + IANA timezone, stored in the same admin-editable config row as the channel ID. Defaults to something reasonable (e.g. 09:00 America/New_York) until the admin changes it.
 7. **Tier vote UI**: 5 buttons (S/A/B/C/D) with live vote-count labels, same in-place-update pattern as scheduler-bot's day/hour buttons (no separate "you voted" confirmation message). Appeal-tag vote is a `discord.ui.Select` dropdown (tags list, capped at Discord's 25-option limit — flagged below as a v1 limit).
 8. Only one open poll can exist at a time (matches "one per day"); no support for concurrent/backlog polls in v1.
@@ -118,7 +118,7 @@ oshinokobot/
       views.py              # tag Select + tier buttons, live count labels
     admin/
       server.py             # FastAPI app factory + lifespan (starts bot task, holds shared db conn)
-      auth.py                # HTTP Basic dependency
+      auth.py                # session-based login dependency (see architecture.md)
       routes/
         characters.py         # upload, list, delete, + bulk JSON import
         tags.py, polls.py, config.py

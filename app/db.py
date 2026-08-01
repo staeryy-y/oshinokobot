@@ -36,6 +36,47 @@ async def create_user(conn: aiosqlite.Connection, *, username: str, password_has
 
 
 # ---------------------------------------------------------------------------
+# Sessions (admin login — server-side, cookie only carries the opaque id)
+# ---------------------------------------------------------------------------
+
+
+async def create_session(
+    conn: aiosqlite.Connection, *, session_id: str, user_id: int, expires_at: str
+) -> None:
+    await conn.execute(
+        "INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (session_id, user_id, _now(), expires_at),
+    )
+    await conn.commit()
+
+
+async def get_session_with_user(
+    conn: aiosqlite.Connection, session_id: str
+) -> aiosqlite.Row | None:
+    cursor = await conn.execute(
+        """
+        SELECT sessions.id AS session_id, sessions.expires_at,
+               users.id AS user_id, users.username
+        FROM sessions
+        JOIN users ON users.id = sessions.user_id
+        WHERE sessions.id = ?
+        """,
+        (session_id,),
+    )
+    return await cursor.fetchone()
+
+
+async def delete_session(conn: aiosqlite.Connection, session_id: str) -> None:
+    await conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+    await conn.commit()
+
+
+async def delete_expired_sessions(conn: aiosqlite.Connection) -> None:
+    await conn.execute("DELETE FROM sessions WHERE expires_at < ?", (_now(),))
+    await conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # Archetype tags
 # ---------------------------------------------------------------------------
 

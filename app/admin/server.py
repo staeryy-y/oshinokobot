@@ -4,15 +4,17 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import db
 from ..bot.client import OshinokoBot
 from ..config import Config
-from .routes import characters, config as config_routes, polls, tags
+from .auth import NotAuthenticated
+from .routes import auth as auth_routes, characters, config as config_routes, polls, tags
 from .templating import STATIC_DIR
 
 logger = logging.getLogger("oshinokobot.admin")
@@ -65,7 +67,7 @@ def create_app(config: Config) -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         # Deliberately unauthenticated and separate from /admin/* — watcher's
-        # poller shouldn't ever hit a Basic Auth prompt.
+        # poller shouldn't ever get bounced through a login redirect.
         return {"status": "ok"}
 
     @app.get("/")
@@ -76,6 +78,11 @@ def create_app(config: Config) -> FastAPI:
     async def admin_root() -> RedirectResponse:
         return RedirectResponse(url="/admin/characters")
 
+    @app.exception_handler(NotAuthenticated)
+    async def not_authenticated_handler(request: Request, exc: NotAuthenticated) -> RedirectResponse:
+        return RedirectResponse(url=f"/admin/login?next={quote(request.url.path)}", status_code=303)
+
+    app.include_router(auth_routes.router)
     app.include_router(characters.router)
     app.include_router(tags.router)
     app.include_router(config_routes.router)

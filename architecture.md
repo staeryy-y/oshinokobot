@@ -156,7 +156,7 @@ update from one request.
 | `run.sh` at repo root, foreground | venv → `pip install` → source `.env` → run migrations → `exec`s `python -m app`, so watcher tracks the uvicorn process's PID directly |
 | No root, pip-only deps | Pure Python: `fastapi`, `uvicorn[standard]`, `jinja2`, `python-multipart`, `aiosqlite`, `discord.py`, `tzdata` |
 | Bind `127.0.0.1:$PORT` | `uvicorn.run(app, host=config.host, port=config.port, ...)` in `app/__main__.py` |
-| Health check | `GET /healthz`, unauthenticated, separate from `/admin/*` so watcher's poller never trips a Basic Auth prompt |
+| Health check | `GET /healthz`, unauthenticated, separate from `/admin/*` so watcher's poller never gets bounced through a login redirect |
 | stdout/stderr logging only | `logging.basicConfig`-equivalent stdout handler stays primary (`app/logging_setup.py`), mirrored to a capped rotating file for local inspection |
 | Non-zero exit = crashed | Uncaught exceptions during startup exit non-zero before uvicorn ever binds |
 
@@ -186,15 +186,43 @@ outside what git manages.
 
 ### Auth
 
-HTTP Basic Auth on every `/admin/*` route (`app/admin/auth.py`), checked
-per-request against the `users` table. Passwords are hashed with stdlib
-`hashlib.pbkdf2_hmac` rather than bcrypt/argon2 — those need a C extension,
-and watcher's guaranteed toolset doesn't promise a compiler. A lookup miss
-still runs a full PBKDF2 verification against a dummy hash, so "no such
-user" and "wrong password" take comparable time — no timing-based username
-enumeration. Accounts are created only via `python -m cli.create_user`,
-which always prompts interactively (`getpass`) and never accepts a
-password as a CLI argument.
+A real login page (`GET/POST /admin/login`) with server-side sessions,
+not HTTP Basic Auth (the original v1 choice — see PLAN.md — turned out to
+be worth replacing with something that looks and behaves like an actual
+app login rather than a browser-native credential prompt).
+
+- **Sessions live in SQLite**, not a signed cookie: `sessions(id, user_id,
+  created_at, expires_at)` (migration `0002_sessions.sql`). The cookie
+  (`oshinoko_session`) only carries the opaque `id` — `secrets.token_urlsafe(32)`,
+  cryptographically random, unguessable — with everything else looked up
+  server-side. This avoids needing a signing `SECRET_KEY` (another secret
+  to provision and rotate) and makes logout a plain `DELETE`, no
+  denylist required. TTL is a fixed 7 days from creation (no sliding
+  renewal in v1); expired sessions are swept opportunistically on every
+  login rather than via a background task, since traffic here is low
+  enough that lazy cleanup is enough.
+- The cookie is `HttpOnly` + `SameSite=Lax`, not marked `Secure` — the app
+  itself only ever speaks plain HTTP on `127.0.0.1` (see *Runtime &
+  deployment*); if it's ever exposed through a TLS-terminating reverse
+  proxy, that's worth revisiting.
+- `require_admin` (`app/admin/auth.py`) is now a plain dependency that
+  raises `NotAuthenticated` rather than an `HTTPException` — an
+  app-level `@app.exception_handler(NotAuthenticated)` in `server.py`
+  turns that into a `303` redirect to `/admin/login?next=<original path>`,
+  so hitting any protected route while logged out lands on the login form
+  and returns you to where you were headed after a successful login.
+  `next` is validated to be a same-site path (`/foo`, not `//evil.example`
+  or an absolute URL) before it's ever redirected to, both when bouncing
+  to the login page and when honoring it after a successful submit — an
+  open-redirect guard against a crafted login link.
+- Passwords are still hashed with stdlib `hashlib.pbkdf2_hmac` rather than
+  bcrypt/argon2 — those need a C extension, and watcher's guaranteed
+  toolset doesn't promise a compiler. A lookup miss during login still
+  runs a full PBKDF2 verification against a dummy hash, so "no such user"
+  and "wrong password" take comparable time — no timing-based username
+  enumeration. Accounts are still created only via `python -m
+  cli.create_user`, which always prompts interactively (`getpass`) and
+  never accepts a password as a CLI argument — unchanged by this switch.
 
 ## Open items (v1 limits, not blocking)
 

@@ -59,8 +59,9 @@ secret ingestion, migrations run from `run.sh`).
 **6. Configure the bot through the admin site**
 - Visit `http://<host>:<port>/admin/characters` (add whatever reverse
   proxy / port-forwarding gets you there — the app itself only binds
-  `127.0.0.1`). Log in with the account from step 5 (browser-native Basic
-  Auth prompt).
+  `127.0.0.1`). You'll land on a login page — sign in with the account
+  from step 5. The session cookie lasts 7 days; "Log out" is in the nav
+  on every admin page.
 - **Tags** (`/admin/tags`): add at least one archetype tag — with zero
   tags configured, the appeal-vote dropdown posts disabled.
 - **Config** (`/admin/config`): set the channel ID (Developer Mode →
