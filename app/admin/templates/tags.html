@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Tags — oshinokobot admin{% endblock %}
+{% block content %}
+<h1>Archetype tags</h1>
+<p class="muted">
+  These are the options voters pick from on "who would this character most appeal to?"
+  A poll shows at most 25 of them — Discord's select-menu limit.
+</p>
+<div class="card">
+  <form class="stacked" hx-post="/admin/tags" hx-target="#tag-list" hx-swap="outerHTML">
+    <label for="name">New tag</label>
+    <input type="text" id="name" name="name" required>
+    <button type="submit">Add tag</button>
+  </form>
+</div>
+{% include "_tag_list.html" %}
+{% endblock %}

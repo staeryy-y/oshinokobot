@@ -1,0 +1,19 @@
+<div id="config-form">
+  {% if saved %}<p class="status-ok">Saved.</p>{% endif %}
+  {% if error %}<p class="status-error">{{ error }}</p>{% endif %}
+  <form class="stacked" hx-post="/admin/config" hx-target="#config-form" hx-swap="outerHTML">
+    <label for="channel_id">Channel ID</label>
+    <input type="text" id="channel_id" name="channel_id" value="{{ guild_config.channel_id or '' }}"
+           placeholder="e.g. 123456789012345678">
+    <p class="muted">Enable Developer Mode in Discord, right-click the target channel, Copy ID.</p>
+
+    <label for="poll_post_time">Daily post time (24-hour, HH:MM)</label>
+    <input type="text" id="poll_post_time" name="poll_post_time" value="{{ guild_config.poll_post_time }}">
+
+    <label for="poll_timezone">Timezone (IANA name)</label>
+    <input type="text" id="poll_timezone" name="poll_timezone" value="{{ guild_config.poll_timezone }}">
+    <p class="muted">e.g. <code>America/New_York</code>, <code>Europe/London</code>, <code>Asia/Tokyo</code></p>
+
+    <button type="submit">Save</button>
+  </form>
+</div>

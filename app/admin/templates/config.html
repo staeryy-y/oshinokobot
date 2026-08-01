@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Config — oshinokobot admin{% endblock %}
+{% block content %}
+<h1>Guild config</h1>
+<p class="muted">
+  Which guild the bot runs in is fixed via <code>DISCORD_GUILD_ID</code> in the environment
+  (see setup.md) — this only controls where and when the daily poll posts.
+</p>
+{% include "_config_form.html" %}
+{% endblock %}

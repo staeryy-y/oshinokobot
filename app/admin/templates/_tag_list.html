@@ -1,0 +1,22 @@
+<div id="tag-list">
+  {% if error %}<p class="status-error">{{ error }}</p>{% endif %}
+  {% if tags %}
+  <table>
+    <thead><tr><th>Name</th><th></th></tr></thead>
+    <tbody>
+      {% for t in tags %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td>
+          <button class="danger" hx-delete="/admin/tags/{{ t.id }}"
+                  hx-target="#tag-list" hx-swap="outerHTML"
+                  hx-confirm="Delete tag {{ t.name }}?">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No tags yet — add at least one before the daily poll can show an appeal-vote option.</p>
+  {% endif %}
+</div>
