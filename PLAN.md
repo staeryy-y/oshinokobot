@@ -136,7 +136,7 @@ oshinokobot/
 3. **Admin UI: characters** — upload (name, series, image), list, delete, and bulk JSON import (see above). This unblocks having data to poll on.
 4. **Admin UI: tags + guild config** — manage archetype tags, set channel/post-time.
 5. **Discord bot**: gateway client, daily scheduling loop, poll posting (embed + image attachment + View), vote interaction handlers, auto-close-on-next-post logic.
-6. **Admin UI: poll results/history** — view past polls, tallies, and (per assumption 4) not raw per-user votes unless that's wanted for anti-cheat/audit — worth confirming when we get there.
+6. **Admin UI: poll results/history** — view past polls, tallies, ~~and (per assumption 4) not raw per-user votes~~ — **superseded**: per-voter detail (who voted for what, with a display-name snapshot captured at vote time) was added after initial build. See `architecture.md`.
 7. **`architecture.md` / `setup.md`** written for real, deploy checklist, first live test in a real guild.
 
 ## Open for later (not blocking v1)

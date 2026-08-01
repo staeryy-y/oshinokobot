@@ -55,6 +55,30 @@ async def poll_detail_page(request: Request, poll_id: int) -> HTMLResponse:
         reverse=True,
     )
 
+    # Per-voter detail (who voted for what), not just the aggregate tallies
+    # above — the two vote tables are independent (someone can answer one
+    # question without the other), so this merges on user_id rather than
+    # joining, and a voter with only one answer just shows a blank for
+    # the other.
+    tier_by_user = {v["user_id"]: v for v in await db.get_tier_votes(conn, poll_id)}
+    appeal_by_user = {v["user_id"]: v for v in await db.get_appeal_votes(conn, poll_id)}
+    voter_rows = []
+    for user_id in set(tier_by_user) | set(appeal_by_user):
+        tier_vote = tier_by_user.get(user_id)
+        appeal_vote = appeal_by_user.get(user_id)
+        display_name = (tier_vote or appeal_vote)["display_name"] or f"user {user_id}"
+        voter_rows.append(
+            {
+                "user_id": user_id,
+                "display_name": display_name,
+                "tier": tier_vote["tier"] if tier_vote else None,
+                "appeal_tag": tags_by_id.get(appeal_vote["tag_id"], "unknown tag")
+                if appeal_vote
+                else None,
+            }
+        )
+    voter_rows.sort(key=lambda row: row["display_name"].lower())
+
     return templates.TemplateResponse(
         request,
         "poll_detail.html",
@@ -64,5 +88,6 @@ async def poll_detail_page(request: Request, poll_id: int) -> HTMLResponse:
             "tier_counts": tier_counts,
             "tiers": ["S", "A", "B", "C", "D"],
             "appeal_rows": appeal_rows,
+            "voter_rows": voter_rows,
         },
     )

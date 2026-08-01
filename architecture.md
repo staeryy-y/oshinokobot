@@ -105,6 +105,9 @@ schema_migrations   name, applied_at
 users                                  -- admin accounts, CLI-created only
   id, username (unique), password_hash, created_at
 
+sessions                                -- admin login sessions (see Auth below)
+  id (opaque token, PK), user_id -> users.id, created_at, expires_at
+
 characters
   id, name, series (nullable), image_path, source_url (nullable),
   uploaded_by -> users.id (nullable), created_at
@@ -120,13 +123,28 @@ polls
   until sent), status (open|closed), posted_at, closed_at (nullable)
 
 appeal_votes
-  poll_id -> polls.id, user_id, tag_id -> archetype_tags.id
+  poll_id -> polls.id, user_id, tag_id -> archetype_tags.id,
+  display_name (nullable — snapshot at vote time, see below)
   PK (poll_id, user_id)                 -- one tag per user, overwritable
 
 tier_votes
-  poll_id -> polls.id, user_id, tier (S|A|B|C|D)
+  poll_id -> polls.id, user_id, tier (S|A|B|C|D),
+  display_name (nullable — snapshot at vote time, see below)
   PK (poll_id, user_id)                 -- one tier per user, overwritable
 ```
+
+`display_name` on both vote tables is a snapshot of `interaction.user.display_name`
+taken at vote time (migration `0003_vote_display_names.sql`, nullable since
+rows from before that migration have none). Storing it beats resolving
+`user_id` back through Discord's API on every admin-page render: it works
+in admin-only mode (no bot connection), survives a voter leaving the
+server, and doesn't cost an API call per view. Re-voting refreshes the
+stored name (`ON CONFLICT ... DO UPDATE`), so a nickname change shows up
+next time that person votes — it's a snapshot, not a live-synced value.
+The admin poll-detail page (`/admin/polls/<id>`) merges both vote tables
+by `user_id` into one per-voter table, since the two questions are
+independent — a voter who only answered one still gets a row, with a `—`
+for the question they skipped.
 
 `characters` with no matching row in `polls` = the unused pool. Deleting an
 `archetype_tag` that already has `appeal_votes` against it is blocked by
@@ -251,5 +269,3 @@ app login rather than a browser-native credential prompt).
 - **Multi-guild**: explicitly out of scope for now (see PLAN.md);
   `guild_config` would become a table instead of a singleton row if that
   changes.
-- **Per-user vote audit**: the admin poll-results view shows aggregate
-  tallies only, not who voted for what.

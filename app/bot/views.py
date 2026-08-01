@@ -47,7 +47,11 @@ class TierButton(discord.ui.Button):
             return
 
         await db.upsert_tier_vote(  # type: ignore[attr-defined]
-            bot.db, poll_id=self.poll_id, user_id=interaction.user.id, tier=self.tier
+            bot.db,
+            poll_id=self.poll_id,
+            user_id=interaction.user.id,
+            tier=self.tier,
+            display_name=interaction.user.display_name,
         )
 
         updated_view = await rebuild_view(bot, self.poll_id)
@@ -79,7 +83,11 @@ class TagButton(discord.ui.Button):
             return
 
         await db.upsert_appeal_vote(  # type: ignore[attr-defined]
-            bot.db, poll_id=self.poll_id, user_id=interaction.user.id, tag_id=self.tag_id
+            bot.db,
+            poll_id=self.poll_id,
+            user_id=interaction.user.id,
+            tag_id=self.tag_id,
+            display_name=interaction.user.display_name,
         )
 
         updated_view = await rebuild_view(bot, self.poll_id)

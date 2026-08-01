@@ -275,27 +275,39 @@ async def list_polls(conn: aiosqlite.Connection, *, limit: int = 20) -> list[aio
 
 
 async def upsert_appeal_vote(
-    conn: aiosqlite.Connection, *, poll_id: int, user_id: int, tag_id: int
+    conn: aiosqlite.Connection,
+    *,
+    poll_id: int,
+    user_id: int,
+    tag_id: int,
+    display_name: str | None = None,
 ) -> None:
     await conn.execute(
         """
-        INSERT INTO appeal_votes (poll_id, user_id, tag_id) VALUES (?, ?, ?)
-        ON CONFLICT (poll_id, user_id) DO UPDATE SET tag_id = excluded.tag_id
+        INSERT INTO appeal_votes (poll_id, user_id, tag_id, display_name) VALUES (?, ?, ?, ?)
+        ON CONFLICT (poll_id, user_id)
+        DO UPDATE SET tag_id = excluded.tag_id, display_name = excluded.display_name
         """,
-        (poll_id, user_id, tag_id),
+        (poll_id, user_id, tag_id, display_name),
     )
     await conn.commit()
 
 
 async def upsert_tier_vote(
-    conn: aiosqlite.Connection, *, poll_id: int, user_id: int, tier: str
+    conn: aiosqlite.Connection,
+    *,
+    poll_id: int,
+    user_id: int,
+    tier: str,
+    display_name: str | None = None,
 ) -> None:
     await conn.execute(
         """
-        INSERT INTO tier_votes (poll_id, user_id, tier) VALUES (?, ?, ?)
-        ON CONFLICT (poll_id, user_id) DO UPDATE SET tier = excluded.tier
+        INSERT INTO tier_votes (poll_id, user_id, tier, display_name) VALUES (?, ?, ?, ?)
+        ON CONFLICT (poll_id, user_id)
+        DO UPDATE SET tier = excluded.tier, display_name = excluded.display_name
         """,
-        (poll_id, user_id, tier),
+        (poll_id, user_id, tier, display_name),
     )
     await conn.commit()
 
@@ -313,3 +325,21 @@ async def get_tier_vote_counts(conn: aiosqlite.Connection, poll_id: int) -> dict
         "SELECT tier, COUNT(*) AS c FROM tier_votes WHERE poll_id = ? GROUP BY tier", (poll_id,)
     )
     return {row["tier"]: row["c"] for row in await cursor.fetchall()}
+
+
+async def get_appeal_votes(conn: aiosqlite.Connection, poll_id: int) -> list[aiosqlite.Row]:
+    """Per-voter detail (user_id, tag_id, display_name) for a poll — not just
+    the aggregate counts above. Used by the admin poll-detail page."""
+    cursor = await conn.execute(
+        "SELECT user_id, tag_id, display_name FROM appeal_votes WHERE poll_id = ?", (poll_id,)
+    )
+    return await cursor.fetchall()
+
+
+async def get_tier_votes(conn: aiosqlite.Connection, poll_id: int) -> list[aiosqlite.Row]:
+    """Per-voter detail (user_id, tier, display_name) for a poll — not just
+    the aggregate counts above. Used by the admin poll-detail page."""
+    cursor = await conn.execute(
+        "SELECT user_id, tier, display_name FROM tier_votes WHERE poll_id = ?", (poll_id,)
+    )
+    return await cursor.fetchall()

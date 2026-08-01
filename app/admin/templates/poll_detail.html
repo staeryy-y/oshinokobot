@@ -36,4 +36,22 @@
 {% else %}
 <p class="empty">No appeal votes.</p>
 {% endif %}
+
+<h2>Votes by user</h2>
+{% if voter_rows %}
+<table>
+  <thead><tr><th>User</th><th>Tier</th><th>Appeal tag</th></tr></thead>
+  <tbody>
+    {% for v in voter_rows %}
+    <tr>
+      <td>{{ v.display_name }} <span class="muted">({{ v.user_id }})</span></td>
+      <td>{{ v.tier or '—' }}</td>
+      <td>{{ v.appeal_tag or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No votes yet.</p>
+{% endif %}
 {% endblock %}
