@@ -4,13 +4,9 @@ import os
 from dataclasses import dataclass
 
 
-class ConfigError(RuntimeError):
-    """Raised when required deployment configuration is missing."""
-
-
 @dataclass(frozen=True)
 class Config:
-    discord_token: str
+    discord_token: str | None
     guild_id: int | None
     host: str
     port: int
@@ -20,9 +16,12 @@ class Config:
 
 
 def load_config() -> Config:
-    token = os.environ.get("DISCORD_BOT_TOKEN")
-    if not token:
-        raise ConfigError("DISCORD_BOT_TOKEN is not set in the environment")
+    # Deliberately optional: the admin site is useful on its own (managing
+    # characters/tags ahead of time, reviewing past poll results), so it
+    # shouldn't be impossible to start without a Discord bot token. When
+    # unset, server.py just skips starting the bot and logs that it's
+    # running admin-only.
+    token = os.environ.get("DISCORD_BOT_TOKEN") or None
 
     guild_id_raw = os.environ.get("DISCORD_GUILD_ID", "").strip()
     guild_id = int(guild_id_raw) if guild_id_raw else None

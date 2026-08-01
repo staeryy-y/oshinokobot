@@ -27,6 +27,12 @@ as two separate watcher deployments, this is **one process**:
   background `asyncio.create_task`, started from FastAPI's `lifespan` and
   sharing the same `aiosqlite` connection and event loop.
 
+`DISCORD_BOT_TOKEN` is optional at the config level — the admin site is
+useful on its own (managing characters/tags ahead of time, reviewing past
+poll results), so it shouldn't be impossible to start without one. When
+it's unset, `lifespan` skips creating `OshinokoBot` entirely and logs that
+it's running admin-only; nothing else changes.
+
 The tradeoff, made deliberately: `/healthz` only reflects "is the HTTP
 server up," not "is Discord connected." If the bot fails to log in (bad
 token, revoked app, etc.), that's logged loudly to stdout — which watcher
@@ -152,7 +158,7 @@ update from one request.
 | Bind `127.0.0.1:$PORT` | `uvicorn.run(app, host=config.host, port=config.port, ...)` in `app/__main__.py` |
 | Health check | `GET /healthz`, unauthenticated, separate from `/admin/*` so watcher's poller never trips a Basic Auth prompt |
 | stdout/stderr logging only | `logging.basicConfig`-equivalent stdout handler stays primary (`app/logging_setup.py`), mirrored to a capped rotating file for local inspection |
-| Non-zero exit = crashed | Uncaught exceptions during startup (e.g. `ConfigError` from a missing token) exit non-zero before uvicorn ever binds |
+| Non-zero exit = crashed | Uncaught exceptions during startup exit non-zero before uvicorn ever binds |
 
 ### Persistence
 
@@ -170,12 +176,13 @@ safe to run on every deploy. `run.sh` runs it as its own step before
 
 ### Secrets
 
-`DISCORD_BOT_TOKEN` (required) and `DISCORD_GUILD_ID` (optional — enables
-instant slash-command sync to that guild; global sync always runs too, on
-Discord's usual propagation delay) are read from `.env`, sourced by
-`run.sh` before migrations run. `.env` is gitignored and never touched by
-git — placed on the host once, out of band, the same way the SQLite file
-and media directory already live outside what git manages.
+`DISCORD_BOT_TOKEN` (optional — see *Single combined process* above) and
+`DISCORD_GUILD_ID` (optional — enables instant slash-command sync to that
+guild; global sync always runs too, on Discord's usual propagation delay)
+are read from `.env`, sourced by `run.sh` before migrations run. `.env` is
+gitignored and never touched by git — placed on the host once, out of
+band, the same way the SQLite file and media directory already live
+outside what git manages.
 
 ### Auth
 

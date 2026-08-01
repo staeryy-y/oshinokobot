@@ -32,15 +32,20 @@ secret ingestion, migrations run from `run.sh`).
   ```
   Placed out-of-band (scp/ssh/whatever host access already exists) — never
   through git, never through `watcher.config.json`.
-- Must exist before the first `run.sh` run: `app/config.py` fails loudly
-  if `DISCORD_BOT_TOKEN` is unset, rather than starting in a broken state.
+- `DISCORD_BOT_TOKEN` is optional: the app starts fine without it and runs
+  admin-only (character/tag management, past results), just with no
+  Discord bot online — useful if you want to stage characters before the
+  bot is ready to invite. Set it whenever the daily poll should actually
+  start posting.
 
 **4. First deploy verification**
 - Watch stdout logs (watcher's only log channel) for: migrations applying
-  cleanly, `Uvicorn running on http://127.0.0.1:$PORT`, and either "bot
-  setup complete" (successful Discord login) or a loud `Discord bot
-  crashed` traceback if the token's wrong.
-- Confirm watcher reports the app healthy (it's polling `GET /healthz`).
+  cleanly, `Uvicorn running on http://127.0.0.1:$PORT`, and then one of —
+  "bot setup complete" (successful Discord login), "DISCORD_BOT_TOKEN not
+  set — running admin-only" (expected if you skipped it in step 3), or a
+  loud `Discord bot crashed` traceback if a token was set but is wrong.
+- Confirm watcher reports the app healthy (it's polling `GET /healthz`) —
+  true regardless of which of the three above you saw.
 
 **5. Create the first admin account**
 - On the host, in the app's working directory:

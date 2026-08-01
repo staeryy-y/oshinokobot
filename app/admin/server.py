@@ -38,17 +38,25 @@ def create_app(config: Config) -> FastAPI:
         app.state.db = conn
         app.state.config = config
 
-        bot = OshinokoBot(config, conn)
-        app.state.bot = bot
-        bot_task = asyncio.create_task(_run_bot(bot, config.discord_token))
+        bot: OshinokoBot | None = None
+        bot_task: asyncio.Task | None = None
+        if config.discord_token is not None:
+            bot = OshinokoBot(config, conn)
+            app.state.bot = bot
+            bot_task = asyncio.create_task(_run_bot(bot, config.discord_token))
+        else:
+            app.state.bot = None
+            logger.info("DISCORD_BOT_TOKEN not set — running admin-only, Discord bot disabled")
 
         try:
             yield
         finally:
-            await bot.close()
-            bot_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await bot_task
+            if bot is not None:
+                await bot.close()
+            if bot_task is not None:
+                bot_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await bot_task
             await conn.close()
 
     app = FastAPI(lifespan=lifespan)
