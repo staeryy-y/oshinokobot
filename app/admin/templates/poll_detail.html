@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Poll #{{ poll.id }} — oshinokobot admin{% endblock %}
+{% block content %}
+<p><a href="/admin/polls">&larr; back to poll history</a></p>
+<h1>
+  {{ character.name }}
+  {% if character.series %}<span class="muted">({{ character.series }})</span>{% endif %}
+</h1>
+<img class="thumb" style="width:120px;height:120px"
+     src="/admin/media/{{ character.image_path.split('/')[-1] }}" alt="">
+<p class="muted">
+  Status: {{ poll.status }} · Posted {{ poll.posted_at[:16].replace('T', ' ') }}
+  {% if poll.closed_at %} · Closed {{ poll.closed_at[:16].replace('T', ' ') }}{% endif %}
+</p>
+
+<h2>Tier results</h2>
+<table>
+  <thead><tr><th>Tier</th><th>Votes</th></tr></thead>
+  <tbody>
+    {% for t in tiers %}
+    <tr><td>{{ t }}</td><td>{{ tier_counts.get(t, 0) }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Appeal results</h2>
+{% if appeal_rows %}
+<table>
+  <thead><tr><th>Tag</th><th>Votes</th></tr></thead>
+  <tbody>
+    {% for name, count in appeal_rows %}
+    <tr><td>{{ name }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No appeal votes.</p>
+{% endif %}
+{% endblock %}

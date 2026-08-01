@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from .. import db
 from ..bot.client import OshinokoBot
 from ..config import Config
-from .routes import characters, config as config_routes, tags
+from .routes import characters, config as config_routes, polls, tags
 from .templating import STATIC_DIR
 
 logger = logging.getLogger("oshinokobot.admin")
@@ -71,5 +71,6 @@ def create_app(config: Config) -> FastAPI:
     app.include_router(characters.router)
     app.include_router(tags.router)
     app.include_router(config_routes.router)
+    app.include_router(polls.router)
 
     return app
