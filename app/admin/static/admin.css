@@ -1,0 +1,120 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1b1b1f;
+  --bg: #fafafa;
+  --muted: #6b6b76;
+  --border: #d9d9e0;
+  --accent: #5865f2;
+  --danger: #d9534f;
+  --ok: #3a9d5c;
+  --card-bg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8ec;
+    --bg: #17171c;
+    --muted: #9a9aa5;
+    --border: #303038;
+    --accent: #7c85f7;
+    --danger: #e5766f;
+    --ok: #4fbd79;
+    --card-bg: #1f1f26;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.4;
+}
+
+nav {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+nav a {
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+
+nav a:hover { color: var(--accent); }
+
+nav strong { margin-right: 0.5rem; }
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+h1 { font-size: 1.4rem; margin-bottom: 1rem; }
+h2 { font-size: 1.1rem; margin: 1.5rem 0 0.75rem; }
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+form.stacked label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0.6rem 0 0.2rem;
+}
+
+form.stacked input[type="text"],
+form.stacked input[type="file"],
+form.stacked textarea,
+form.stacked select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+
+form.stacked textarea { min-height: 8rem; font-family: ui-monospace, monospace; }
+
+button, .button {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 5px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+button.danger { background: var(--danger); }
+
+table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+th { color: var(--muted); font-weight: 600; }
+
+.thumb {
+  width: 40px; height: 40px; object-fit: cover; border-radius: 4px;
+  vertical-align: middle; margin-right: 0.5rem;
+}
+
+.muted { color: var(--muted); font-size: 0.85rem; }
+.status-ok { color: var(--ok); }
+.status-error { color: var(--danger); }
+.empty { color: var(--muted); font-style: italic; padding: 0.5rem 0; }

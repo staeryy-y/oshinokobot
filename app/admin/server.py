@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import db
 from ..config import Config
+from .routes import characters
 from .templating import STATIC_DIR
 
 logger = logging.getLogger("oshinokobot.admin")
@@ -36,6 +37,12 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/")
     async def root() -> RedirectResponse:
-        return RedirectResponse(url="/admin")
+        return RedirectResponse(url="/admin/characters")
+
+    @app.get("/admin")
+    async def admin_root() -> RedirectResponse:
+        return RedirectResponse(url="/admin/characters")
+
+    app.include_router(characters.router)
 
     return app

@@ -1,0 +1,21 @@
+{% if error %}
+<p class="status-error">{{ error }}</p>
+{% else %}
+<table>
+  <thead><tr><th>Name</th><th>Status</th><th>Detail</th></tr></thead>
+  <tbody>
+    {% for r in results %}
+    <tr>
+      <td>{{ r.name }}</td>
+      <td class="{{ 'status-ok' if r.status == 'imported' else ('status-error' if r.status == 'error' else 'muted') }}">{{ r.status }}</td>
+      <td class="muted">{{ r.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="muted">
+  {{ results|selectattr('status', 'equalto', 'imported')|list|length }} imported,
+  {{ results|selectattr('status', 'equalto', 'skipped')|list|length }} skipped,
+  {{ results|selectattr('status', 'equalto', 'error')|list|length }} errored.
+</p>
+{% endif %}

@@ -1,0 +1,24 @@
+{% if characters %}
+<table>
+  <thead>
+    <tr><th></th><th>Name</th><th>Series</th><th>Added</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for c in characters %}
+    <tr>
+      <td><img class="thumb" src="/admin/media/{{ c.image_path.split('/')[-1] }}" alt=""></td>
+      <td>{{ c.name }}</td>
+      <td>{{ c.series or '' }}</td>
+      <td class="muted">{{ c.created_at[:10] }}</td>
+      <td>
+        <button class="danger" hx-delete="/admin/characters/{{ c.id }}"
+                hx-target="#character-list" hx-swap="outerHTML"
+                hx-confirm="Delete {{ c.name }}?">Delete</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No characters yet.</p>
+{% endif %}

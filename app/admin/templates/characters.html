@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Characters — oshinokobot admin{% endblock %}
+{% block content %}
+<h1>Characters</h1>
+
+<div class="card">
+  <h2>Add a character</h2>
+  <form class="stacked" hx-post="/admin/characters" hx-target="#character-list"
+        hx-swap="outerHTML" hx-encoding="multipart/form-data">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" required>
+    <label for="series">Series (optional)</label>
+    <input type="text" id="series" name="series">
+    <label for="image">Image</label>
+    <input type="file" id="image" name="image"
+           accept="image/png,image/jpeg,image/webp,image/gif" required>
+    <button type="submit">Add character</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Bulk import (JSON)</h2>
+  <p class="muted">
+    Upload a <code>.json</code> file or paste JSON directly. Top-level object with a
+    <code>characters</code> array; each entry needs <code>name</code> and
+    <code>image_base64</code> (raw base64, no <code>data:</code> prefix) — <code>series</code>,
+    <code>image_mime</code> (default <code>image/png</code>) and <code>source_url</code> are
+    optional. Entries matching an existing (name, series) pair are skipped, not treated as
+    errors; bad entries are reported individually without blocking the rest of the batch.
+  </p>
+  <form class="stacked" hx-post="/admin/characters/import" hx-target="#import-results"
+        hx-swap="innerHTML" hx-encoding="multipart/form-data">
+    <label for="import_file">JSON file</label>
+    <input type="file" id="import_file" name="import_file" accept="application/json,.json">
+    <label for="import_text">...or paste JSON</label>
+    <textarea id="import_text" name="import_text" placeholder='{"characters": [...]}'></textarea>
+    <button type="submit">Import</button>
+  </form>
+  <div id="import-results"></div>
+</div>
+
+<h2>Pool ({{ characters|length }})</h2>
+{% include "_character_list.html" %}
+{% endblock %}
