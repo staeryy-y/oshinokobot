@@ -1,26 +1,16 @@
-{% extends "base.html" %}
-{% block title %}Poll #{{ poll.id }} — oshinokobot admin{% endblock %}
+{% extends "public_base.html" %}
+{% block title %}{{ character.name }} — oshinokobot results{% endblock %}
 {% block content %}
-<p><a href="/admin/polls">&larr; back to poll history</a></p>
+<p><a href="/results">&larr; back to results</a></p>
 <h1>
   {{ character.name }}
   {% if character.series %}<span class="muted">({{ character.series }})</span>{% endif %}
 </h1>
 <img class="thumb" style="width:120px;height:120px"
-     src="/admin/media/{{ character.image_path.split('/')[-1] }}" alt="">
-<p class="muted">
-  Status: {{ poll.status }} · Posted {{ poll.posted_at[:16].replace('T', ' ') }}
-  {% if poll.closed_at %} · Closed {{ poll.closed_at[:16].replace('T', ' ') }}{% endif %}
-</p>
-{% if poll.status == 'closed' %}
+     src="/media/{{ character.image_path.split('/')[-1] }}" alt="">
+<p class="muted">Closed {{ poll.closed_at[:16].replace('T', ' ') }}</p>
 <p><strong>Officially dubbed:</strong> {{ poll.result_tier or 'No tier votes — not dubbed' }}</p>
 <p><strong>Core:</strong> {{ core_tag_name or 'No appeal votes — no core' }}</p>
-{% endif %}
-
-<form method="post" action="/admin/polls/{{ poll.id }}/delete"
-      onsubmit="return confirm('Delete poll #{{ poll.id }} ({{ character.name }}) and all its votes? This cannot be undone.{% if poll.status == 'open' %} It\'s still open — the live Discord message will stop working but won\'t be removed.{% endif %} The character goes back into the unused pool.');">
-  <button type="submit" class="danger">Delete this poll</button>
-</form>
 
 <h2>Tier results</h2>
 <table>
@@ -53,7 +43,7 @@
   <tbody>
     {% for v in voter_rows %}
     <tr>
-      <td>{{ v.display_name }} <span class="muted">({{ v.user_id }})</span></td>
+      <td>{{ v.display_name }}</td>
       <td>{{ v.tier or '—' }}</td>
       <td>{{ v.appeal_tag or '—' }}</td>
     </tr>

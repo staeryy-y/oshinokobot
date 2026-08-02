@@ -1,0 +1,66 @@
+{% extends "public_base.html" %}
+{% block title %}Results — oshinokobot{% endblock %}
+{% block content %}
+<h1>Server results</h1>
+
+<h2>Cumulative average tier list</h2>
+<p class="muted">
+  Every character's average score across all its individual tier votes (S=5 down to D=1) —
+  not the same as a single poll's "official dub," which is whichever tier got the most votes,
+  not the mean.
+</p>
+{% if average_rows %}
+<table>
+  <thead><tr><th>#</th><th>Character</th><th>Average</th><th>Nearest tier</th><th>Votes</th></tr></thead>
+  <tbody>
+    {% for r in average_rows %}
+    <tr>
+      <td class="muted">{{ loop.index }}</td>
+      <td>
+        <a href="/results/{{ r.poll_id }}">{{ r.name }}</a>
+        {% if r.series %}<span class="muted">({{ r.series }})</span>{% endif %}
+      </td>
+      <td>{{ "%.2f"|format(r.average) }}</td>
+      <td>{{ r.nearest_tier }}</td>
+      <td class="muted">{{ r.vote_count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No tier votes yet.</p>
+{% endif %}
+
+<h2>Characters by core</h2>
+<p class="muted">
+  A character's "core" is whichever appeal tag won the most votes on its poll — same
+  majority-vote rule as the tier dub, for the other question.
+</p>
+{% if core_groups %}
+{% for tag_name, items in core_groups %}
+<h3>{{ tag_name }} <span class="muted">({{ items|length }})</span></h3>
+<ul>
+  {% for item in items %}
+  <li>
+    <a href="/results/{{ item.poll_id }}">{{ item.name }}</a>
+    {% if item.series %}<span class="muted">({{ item.series }})</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endfor %}
+{% else %}
+<p class="empty">No appeal votes yet.</p>
+{% endif %}
+
+{% if no_core %}
+<h3>No core yet <span class="muted">({{ no_core|length }})</span></h3>
+<ul>
+  {% for item in no_core %}
+  <li>
+    <a href="/results/{{ item.poll_id }}">{{ item.name }}</a>
+    {% if item.series %}<span class="muted">({{ item.series }})</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

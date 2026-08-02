@@ -77,6 +77,7 @@ main {
 
 h1 { font-size: 1.4rem; margin-bottom: 1rem; }
 h2 { font-size: 1.1rem; margin: 1.5rem 0 0.75rem; }
+h3 { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
 
 .card {
   background: var(--card-bg);

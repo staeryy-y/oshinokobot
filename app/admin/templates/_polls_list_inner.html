@@ -12,7 +12,12 @@
       <td>{{ p.result_tier or '—' }}</td>
       <td class="muted">{{ p.posted_at[:16].replace('T', ' ') }}</td>
       <td class="muted">{{ p.closed_at[:16].replace('T', ' ') if p.closed_at else '—' }}</td>
-      <td><a class="button" href="/admin/polls/{{ p.id }}">View</a></td>
+      <td>
+        <a class="button" href="/admin/polls/{{ p.id }}">View</a>
+        <button class="danger" hx-delete="/admin/polls/{{ p.id }}"
+                hx-target="#polls-list" hx-swap="outerHTML"
+                hx-confirm="Delete poll #{{ p.id }} ({{ p.character_name }}) and all its votes? This cannot be undone.{% if p.status == 'open' %} It's still open — the live Discord message will stop working but won't be removed.{% endif %} The character goes back into the unused pool.">Delete</button>
+      </td>
     </tr>
     {% endfor %}
   </tbody>

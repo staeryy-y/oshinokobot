@@ -87,13 +87,17 @@ stateDiagram-v2
   `..., +N more` — a safety margin against Discord's 1024-character
   embed-field limit on a very active poll, not something expected to
   matter at this bot's normal scale.
-- **Official dub**: closing also computes `polls.result_tier`
-  (`_compute_result_tier` in `app/bot/cogs/polls.py`) — whichever tier got
-  the most votes. Zero tier votes means no dub at all (`NULL`), not a
-  default one; a tie among the top tier(s) is broken with `random.choice`
-  among *only* the tied tiers, never all five. Shown as an "Officially
-  dubbed" embed field alongside the results above, and in the admin UI
-  (`/admin/polls` list + poll detail page).
+- **Official dub and core**: closing also computes `polls.result_tier`
+  (the "dub") and `polls.result_tag_id` (the "core") —
+  `_compute_result_tier`/`_compute_result_tag` in `app/bot/cogs/polls.py`,
+  both thin wrappers around one shared `_pick_majority` (majority vote,
+  zero votes on that question means no result at all rather than a
+  default one, a tie among the top entries broken with `random.choice`
+  among *only* the tied ones). Same rule, applied to each question
+  separately — the dub is whichever tier got the most votes, the core is
+  whichever appeal tag did. Shown as "Officially dubbed"/"Core" embed
+  fields alongside the results above, and in the admin UI and public
+  results page (see *Public results page* below).
 - **Voting**: both questions are independent button groups on the same
   message (`app/bot/views.py::PollView`) — one `discord.ui.Button` per
   archetype tag, plus five more for the tier. Each vote is an upsert
@@ -214,7 +218,9 @@ guild_config                            -- singleton row (id = 1)
 polls
   id, character_id -> characters.id, channel_id, message_id (nullable
   until sent), status (open|closed), posted_at, closed_at (nullable),
-  result_tier (nullable — the official dub, see Poll lifecycle below)
+  result_tier (nullable — the official dub, see Poll lifecycle below),
+  result_tag_id -> archetype_tags.id (nullable — the official "core",
+  same majority-vote rule as result_tier, for the other question)
 
 appeal_votes
   poll_id -> polls.id, user_id, tag_id -> archetype_tags.id,
@@ -235,10 +241,13 @@ in admin-only mode (no bot connection), survives a voter leaving the
 server, and doesn't cost an API call per view. Re-voting refreshes the
 stored name (`ON CONFLICT ... DO UPDATE`), so a nickname change shows up
 next time that person votes — it's a snapshot, not a live-synced value.
-The admin poll-detail page (`/admin/polls/<id>`) merges both vote tables
-by `user_id` into one per-voter table, since the two questions are
-independent — a voter who only answered one still gets a row, with a `—`
-for the question they skipped.
+Both the admin poll-detail page (`/admin/polls/<id>`) and the public
+per-character page (`/results/<id>`) merge both vote tables by `user_id`
+into one per-voter table (`app/admin/poll_results.py::build_voter_rows`,
+shared by both routes) — a voter who only answered one question still
+gets a row, with a `—` for the one they skipped. The public version omits
+the numeric Discord id that the admin one shows next to the name; there's
+no reason to expose raw snowflakes on a page anyone can load.
 
 `characters` with no matching row in `polls` = the unused pool. Deleting an
 `archetype_tag` that already has `appeal_votes` against it is blocked by
@@ -250,6 +259,60 @@ Only one `guild` is supported — its identity is `DISCORD_GUILD_ID` in the
 environment, not a database row, since this bot only ever lives in one
 server (see PLAN.md). `guild_config` only holds the parts an admin should
 be able to change without a redeploy: which channel, and when.
+
+## Public results page
+
+`/results` and `/results/<poll_id>` (`app/admin/routes/public_results.py`)
+are the one deliberately unauthenticated part of the web app — no
+`require_admin` dependency anywhere in that router, mounted without an
+`/admin` prefix. Read-only; nothing in that file can mutate state. A link
+to it ("Public results ↗") sits in the admin nav for convenience.
+
+- **Cumulative average tier list** (`/results`) — every character's
+  *average* score across all its individual tier votes (S=5 down to D=1,
+  `app/admin/poll_results.py::TIER_VALUES`), ranked best-first. This is
+  deliberately a different metric from `polls.result_tier` (the per-poll
+  majority winner, i.e. the mode) — averaging captures spread that a pure
+  majority vote throws away (a character with mixed S/A/B votes and one
+  with unanimous A votes can both "dub" as A, but their averages tell
+  different stories). Characters with zero tier votes have no average and
+  are left out of this ranking entirely, rather than shown with an
+  undefined score.
+- **Characters by core** (`/results`, same page) — grouped by
+  `polls.result_tag_id` (the character's "core": whichever appeal tag won
+  the most votes, computed with the exact same majority+random-tiebreak
+  rule as the tier dub — see *Poll lifecycle*). Characters with zero
+  appeal votes land in a trailing "No core yet" group instead of being
+  dropped.
+- **Per-character detail** (`/results/<poll_id>`) — the same tier/appeal
+  breakdown and per-voter table the admin poll-detail page shows, reached
+  by clicking a character's name in either list above. Only closed polls
+  are published here (`404` for an open or nonexistent poll id) — an open
+  poll's outcome isn't decided yet, and it's already visible live on
+  Discord for anyone in the server.
+- **Character images are served publicly** via `GET /media/<filename>` —
+  a second route distinct from the auth-gated `GET /admin/media/<filename>`,
+  both sharing the same path-safety check
+  (`app/admin/images.py::resolve_media_path`, factored out specifically so
+  that check has one implementation, not two to keep in sync).
+
+## Poll deletion
+
+`db.delete_poll` removes a poll's `appeal_votes` and `tier_votes` rows
+before the `polls` row itself (required — `PRAGMA foreign_keys = ON`
+means the poll row can't go first while votes still reference it).
+Because "used" status is derived purely from *whether a `polls` row
+exists* for a character (see `pick_random_unused_character`), deleting a
+poll is a full undo: the character falls right back into the unused pool,
+not just out of the visible history. Reachable from the admin polls list
+(`DELETE /admin/polls/<id>`, htmx, returns the updated list) and from the
+poll detail page itself (`POST /admin/polls/<id>/delete`, a plain form
+since the page being deleted can't very well swap itself in place —
+redirects to the list instead). Both require confirmation, and the
+confirmation text says explicitly if the poll being deleted is still
+`open` — nothing here touches the live Discord message, which is left
+orphaned but harmless (every vote callback already treats a poll that
+`db.get_poll` can't find as "not open anymore").
 
 ## Bulk character import
 

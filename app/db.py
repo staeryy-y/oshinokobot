@@ -294,12 +294,34 @@ async def get_poll(conn: aiosqlite.Connection, poll_id: int) -> aiosqlite.Row | 
 
 
 async def close_poll(
-    conn: aiosqlite.Connection, poll_id: int, *, closed_at: str, result_tier: str | None
+    conn: aiosqlite.Connection,
+    poll_id: int,
+    *,
+    closed_at: str,
+    result_tier: str | None,
+    result_tag_id: int | None,
 ) -> None:
     await conn.execute(
-        "UPDATE polls SET status = 'closed', closed_at = ?, result_tier = ? WHERE id = ?",
-        (closed_at, result_tier, poll_id),
+        """
+        UPDATE polls SET status = 'closed', closed_at = ?, result_tier = ?, result_tag_id = ?
+        WHERE id = ?
+        """,
+        (closed_at, result_tier, result_tag_id, poll_id),
     )
+    await conn.commit()
+
+
+async def delete_poll(conn: aiosqlite.Connection, poll_id: int) -> None:
+    """Deletes a poll and its votes. Since character "used" status is
+    derived purely from the existence of a polls row (see
+    pick_random_unused_character), this also frees the character back into
+    the unused pool — deleting a poll is a full undo, not just a hide.
+    Doesn't touch anything on Discord even if the poll is still open (its
+    message, if any, is left as-is — orphaned but harmless, since every
+    vote callback already treats a missing poll as "not open anymore")."""
+    await conn.execute("DELETE FROM appeal_votes WHERE poll_id = ?", (poll_id,))
+    await conn.execute("DELETE FROM tier_votes WHERE poll_id = ?", (poll_id,))
+    await conn.execute("DELETE FROM polls WHERE id = ?", (poll_id,))
     await conn.commit()
 
 
@@ -318,16 +340,39 @@ async def list_polls(conn: aiosqlite.Connection, *, limit: int = 20) -> list[aio
 
 
 async def list_dubbed_characters(conn: aiosqlite.Connection) -> list[aiosqlite.Row]:
-    """Every closed poll's character + its official dub, across the
-    server's whole history — backs the /results command's cumulative tier
-    list (as opposed to any single poll's outcome)."""
+    """Every closed poll's character + its official dub (result_tier) and
+    "core" (result_tag_id/name — the winning appeal tag), across the
+    server's whole history. Backs both the /results command's cumulative
+    tier list and the public results page's "characters by core" section,
+    so one query covers both rather than maintaining near-duplicate SQL."""
     cursor = await conn.execute(
         """
-        SELECT characters.name AS character_name, polls.result_tier
+        SELECT polls.id AS poll_id, characters.id AS character_id,
+               characters.name AS character_name, characters.series AS character_series,
+               polls.result_tier, polls.result_tag_id, archetype_tags.name AS core_tag_name
         FROM polls
         JOIN characters ON characters.id = polls.character_id
+        LEFT JOIN archetype_tags ON archetype_tags.id = polls.result_tag_id
         WHERE polls.status = 'closed'
         ORDER BY polls.closed_at ASC
+        """
+    )
+    return await cursor.fetchall()
+
+
+async def get_tier_votes_for_closed_polls(conn: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    """Every individual tier vote cast on any closed poll, with the
+    character it belongs to — the raw material for the public results
+    page's cumulative *average* tier ranking (as opposed to result_tier,
+    which is the majority/mode, not the mean)."""
+    cursor = await conn.execute(
+        """
+        SELECT characters.id AS character_id, characters.name AS character_name,
+               characters.series AS character_series, polls.id AS poll_id, tier_votes.tier
+        FROM tier_votes
+        JOIN polls ON polls.id = tier_votes.poll_id
+        JOIN characters ON characters.id = polls.character_id
+        WHERE polls.status = 'closed'
         """
     )
     return await cursor.fetchall()

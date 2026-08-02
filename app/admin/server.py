@@ -14,7 +14,14 @@ from .. import db
 from ..bot.client import OshinokoBot
 from ..config import Config
 from .auth import NotAuthenticated
-from .routes import auth as auth_routes, characters, config as config_routes, polls, tags
+from .routes import (
+    auth as auth_routes,
+    characters,
+    config as config_routes,
+    polls,
+    public_results,
+    tags,
+)
 from .templating import STATIC_DIR
 
 logger = logging.getLogger("oshinokobot.admin")
@@ -87,5 +94,6 @@ def create_app(config: Config) -> FastAPI:
     app.include_router(tags.router)
     app.include_router(config_routes.router)
     app.include_router(polls.router)
+    app.include_router(public_results.router)
 
     return app

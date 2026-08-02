@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -10,7 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from ... import db
 from ..auth import require_admin
-from ..images import decode_base64_image, extension_for_mime, save_image_bytes
+from ..images import decode_base64_image, extension_for_mime, resolve_media_path, save_image_bytes
 from ..templating import templates
 
 logger = logging.getLogger("oshinokobot.admin.characters")
@@ -82,14 +81,8 @@ async def delete_character(request: Request, character_id: int) -> HTMLResponse:
 
 @router.get("/media/{filename}")
 async def get_media(request: Request, filename: str) -> FileResponse:
-    # filename is always a bare uuid-hex.ext we generated ourselves (see
-    # images.save_image_bytes) — reject anything containing a path
-    # separator so this can't be walked outside media_dir.
-    if "/" in filename or "\\" in filename or filename in (".", ".."):
-        raise HTTPException(400, "Invalid filename")
-    config = request.app.state.config
-    path = Path(config.media_dir) / filename
-    if not path.is_file():
+    path = resolve_media_path(request.app.state.config.media_dir, filename)
+    if path is None:
         raise HTTPException(404, "Not found")
     return FileResponse(path)
 

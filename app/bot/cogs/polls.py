@@ -91,21 +91,37 @@ def _format_cumulative_tier_list(dubbed_rows: list) -> str:
     return "\n".join(lines)
 
 
-def _compute_result_tier(tier_counts: dict[str, int]) -> str | None:
-    """The character's official dub: whichever tier got the most votes.
-    Zero tier votes (empty dict — get_tier_vote_counts only includes tiers
-    with at least one vote) means no dub at all, not a default one. A tie
-    among the top tier(s) is broken with a random pick among just those
-    tied tiers, not all five."""
-    if not tier_counts:
+def _pick_majority(counts: dict) -> object | None:
+    """Generic majority-vote winner with a random tie-break among only the
+    tied top entries — shared by the tier dub and the appeal-tag "core"
+    below, same rule, different key types (tier letters vs. tag ids).
+    Empty counts (no votes at all) means no winner, not a default one."""
+    if not counts:
         return None
-    top_count = max(tier_counts.values())
-    winners = [tier for tier, count in tier_counts.items() if count == top_count]
+    top_count = max(counts.values())
+    winners = [key for key, count in counts.items() if count == top_count]
     return random.choice(winners)
+
+
+def _compute_result_tier(tier_counts: dict[str, int]) -> str | None:
+    """The character's official dub: whichever tier got the most votes."""
+    return _pick_majority(tier_counts)
+
+
+def _compute_result_tag(appeal_counts: dict[int, int]) -> int | None:
+    """The character's official "core": whichever appeal tag got the most
+    votes — same rule as the tier dub, for the other question."""
+    return _pick_majority(appeal_counts)
 
 
 def _format_dub(result_tier: str | None) -> str:
     return f"**{result_tier}**" if result_tier else "No tier votes — not dubbed"
+
+
+def _format_core(result_tag_id: int | None, tags_by_id: dict[int, str]) -> str:
+    if result_tag_id is None:
+        return "No appeal votes — no core"
+    return f"**{tags_by_id.get(result_tag_id, 'unknown tag')}**"
 
 
 class Polls(commands.Cog):
@@ -259,12 +275,14 @@ class Polls(commands.Cog):
         appeal_counts = await db.get_appeal_vote_counts(self.bot.db, poll["id"])
         tags_by_id = {t["id"]: t["name"] for t in tags}
         result_tier = _compute_result_tier(tier_counts)
+        result_tag_id = _compute_result_tag(appeal_counts)
 
         await db.close_poll(
             self.bot.db,
             poll["id"],
             closed_at=datetime.now(timezone.utc).isoformat(),
             result_tier=result_tier,
+            result_tag_id=result_tag_id,
         )
         if poll["message_id"] is None:
             return
@@ -288,6 +306,7 @@ class Polls(commands.Cog):
             inline=False,
         )
         embed.add_field(name="Officially dubbed", value=_format_dub(result_tier), inline=False)
+        embed.add_field(name="Core", value=_format_core(result_tag_id, tags_by_id), inline=False)
         embed.set_footer(text="Poll closed")
 
         # Passing the real tags/counts (not empty) so the disabled buttons

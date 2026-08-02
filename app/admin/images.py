@@ -36,3 +36,15 @@ def decode_base64_image(raw_base64: str) -> bytes:
         return base64.b64decode(raw_base64, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise ValueError(f"invalid base64: {exc}") from exc
+
+
+def resolve_media_path(media_dir: str, filename: str) -> Path | None:
+    """filename is always a bare uuid-hex.ext this module generated itself
+    (see save_image_bytes) — reject anything containing a path separator
+    so this can't be walked outside media_dir. Returns None for an unsafe
+    or nonexistent filename rather than raising, since both the admin and
+    public media routes just want a clean 404/400 either way."""
+    if "/" in filename or "\\" in filename or filename in (".", ".."):
+        return None
+    path = Path(media_dir) / filename
+    return path if path.is_file() else None

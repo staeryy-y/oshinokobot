@@ -169,6 +169,23 @@ Not in the original plan — added after the v1 build, on request:
   it's a sticky allowlist. The existing "never repick a used character"
   rule applies inside whatever the active filter is. See `architecture.md`
   → *Game filter*.
+- **"Core"**: a second official result alongside the dub —
+  `polls.result_tag_id`, whichever appeal tag got the most votes, same
+  majority+random-tiebreak rule as `result_tier`. Shown everywhere the dub
+  is (Discord close embed, admin UI, public results page).
+- **Public results page** (`/results`, `/results/<poll_id>`) — the one
+  deliberately unauthenticated part of the web app. Shows a cumulative
+  *average* tier ranking (distinct from the dub, which is the mode, not
+  the mean), characters grouped by core, and a per-character page with
+  the same tier/appeal/per-voter breakdown the admin poll detail page has
+  (minus the raw Discord user id). See `architecture.md` → *Public
+  results page*.
+- **Poll deletion**: admins can delete a poll and its votes from
+  `/admin/polls` (list) or the poll detail page. Since a character's
+  "used" status is derived from whether a `polls` row exists for it,
+  deleting a poll fully frees the character back into the unused pool —
+  not just a hide. Doesn't touch a still-live Discord message if the
+  poll being deleted was open. See `architecture.md` → *Poll deletion*.
 
 ## Open for later (not blocking v1)
 

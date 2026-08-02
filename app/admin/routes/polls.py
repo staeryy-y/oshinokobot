@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ... import db
 from ..auth import require_admin
+from ..poll_results import build_voter_rows
 from ..templating import templates
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
@@ -55,29 +56,10 @@ async def poll_detail_page(request: Request, poll_id: int) -> HTMLResponse:
         reverse=True,
     )
 
-    # Per-voter detail (who voted for what), not just the aggregate tallies
-    # above — the two vote tables are independent (someone can answer one
-    # question without the other), so this merges on user_id rather than
-    # joining, and a voter with only one answer just shows a blank for
-    # the other.
-    tier_by_user = {v["user_id"]: v for v in await db.get_tier_votes(conn, poll_id)}
-    appeal_by_user = {v["user_id"]: v for v in await db.get_appeal_votes(conn, poll_id)}
-    voter_rows = []
-    for user_id in set(tier_by_user) | set(appeal_by_user):
-        tier_vote = tier_by_user.get(user_id)
-        appeal_vote = appeal_by_user.get(user_id)
-        display_name = (tier_vote or appeal_vote)["display_name"] or f"user {user_id}"
-        voter_rows.append(
-            {
-                "user_id": user_id,
-                "display_name": display_name,
-                "tier": tier_vote["tier"] if tier_vote else None,
-                "appeal_tag": tags_by_id.get(appeal_vote["tag_id"], "unknown tag")
-                if appeal_vote
-                else None,
-            }
-        )
-    voter_rows.sort(key=lambda row: row["display_name"].lower())
+    voter_rows = build_voter_rows(
+        await db.get_tier_votes(conn, poll_id), await db.get_appeal_votes(conn, poll_id), tags_by_id
+    )
+    core_tag_name = tags_by_id.get(poll["result_tag_id"]) if poll["result_tag_id"] else None
 
     return templates.TemplateResponse(
         request,
@@ -89,5 +71,26 @@ async def poll_detail_page(request: Request, poll_id: int) -> HTMLResponse:
             "tiers": ["S", "A", "B", "C", "D"],
             "appeal_rows": appeal_rows,
             "voter_rows": voter_rows,
+            "core_tag_name": core_tag_name,
         },
     )
+
+
+@router.delete("/polls/{poll_id}", response_class=HTMLResponse)
+async def delete_poll_from_list(request: Request, poll_id: int) -> HTMLResponse:
+    """Used by the delete button on the poll list — returns the updated
+    list partial, same pattern as characters/tags delete."""
+    conn = request.app.state.db
+    await db.delete_poll(conn, poll_id)
+    polls = await db.list_polls(conn, limit=50)
+    return templates.TemplateResponse(request, "_polls_list.html", {"polls": polls})
+
+
+@router.post("/polls/{poll_id}/delete")
+async def delete_poll_from_detail(request: Request, poll_id: int) -> RedirectResponse:
+    """Used by the delete button on the poll detail page — a plain form
+    POST (not htmx) since the whole page it's deleting stops existing;
+    redirects back to the list rather than swapping a partial in place."""
+    conn = request.app.state.db
+    await db.delete_poll(conn, poll_id)
+    return RedirectResponse(url="/admin/polls", status_code=303)
