@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
 from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -11,6 +10,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from ... import db
+from ...majority import pick_majority
 from .. import views
 
 logger = logging.getLogger("oshinokobot.bot.polls")
@@ -71,51 +71,39 @@ def _format_appeal_results(appeal_votes: list, tags_by_id: dict[int, str]) -> st
     return "\n".join(f"**{tag_name}**: {_join_names(names)}" for tag_name, names in ranked)
 
 
-def _format_cumulative_tier_list(dubbed_rows: list) -> str:
-    """Every closed poll's character, grouped by its official dub, across
+def _format_cumulative_tier_list(polled_rows: list) -> str:
+    """Every closed poll's character, grouped by its result tier, across
     the server's whole history — the running tier list this bot is
     actually for, as opposed to any single day's poll. Characters that
     closed with no votes (result_tier is NULL) get their own trailing
     line rather than being silently dropped."""
     grouped: dict[str | None, list[str]] = {}
-    for row in dubbed_rows:
+    for row in polled_rows:
         grouped.setdefault(row["result_tier"], []).append(row["character_name"])
 
     lines = [
         f"**{tier}**: {_join_names(grouped[tier])}" if grouped.get(tier) else f"**{tier}**: —"
         for tier in views.TIERS
     ]
-    undubbed = grouped.get(None, [])
-    if undubbed:
-        lines.append(f"**Not dubbed** (no votes): {_join_names(undubbed)}")
+    no_result = grouped.get(None, [])
+    if no_result:
+        lines.append(f"**No result** (no votes): {_join_names(no_result)}")
     return "\n".join(lines)
 
 
-def _pick_majority(counts: dict) -> object | None:
-    """Generic majority-vote winner with a random tie-break among only the
-    tied top entries — shared by the tier dub and the appeal-tag "core"
-    below, same rule, different key types (tier letters vs. tag ids).
-    Empty counts (no votes at all) means no winner, not a default one."""
-    if not counts:
-        return None
-    top_count = max(counts.values())
-    winners = [key for key, count in counts.items() if count == top_count]
-    return random.choice(winners)
-
-
 def _compute_result_tier(tier_counts: dict[str, int]) -> str | None:
-    """The character's official dub: whichever tier got the most votes."""
-    return _pick_majority(tier_counts)
+    """The character's result tier: whichever tier got the most votes."""
+    return pick_majority(tier_counts)
 
 
 def _compute_result_tag(appeal_counts: dict[int, int]) -> int | None:
-    """The character's official "core": whichever appeal tag got the most
-    votes — same rule as the tier dub, for the other question."""
-    return _pick_majority(appeal_counts)
+    """The character's "core": whichever appeal tag got the most votes —
+    same rule as the result tier, for the other question."""
+    return pick_majority(appeal_counts)
 
 
-def _format_dub(result_tier: str | None) -> str:
-    return f"**{result_tier}**" if result_tier else "No tier votes — not dubbed"
+def _format_result_tier(result_tier: str | None) -> str:
+    return f"**{result_tier}**" if result_tier else "No tier votes — no result"
 
 
 def _format_core(result_tag_id: int | None, tags_by_id: dict[int, str]) -> str:
@@ -305,7 +293,7 @@ class Polls(commands.Cog):
             value=_format_appeal_results(appeal_votes, tags_by_id),
             inline=False,
         )
-        embed.add_field(name="Officially dubbed", value=_format_dub(result_tier), inline=False)
+        embed.add_field(name="Result tier", value=_format_result_tier(result_tier), inline=False)
         embed.add_field(name="Core", value=_format_core(result_tag_id, tags_by_id), inline=False)
         embed.set_footer(text="Poll closed")
 
@@ -321,17 +309,17 @@ class Polls(commands.Cog):
         name="results", description="Show the server's cumulative tier list so far"
     )
     async def results(self, interaction: discord.Interaction) -> None:
-        dubbed = await db.list_dubbed_characters(self.bot.db)
-        if not dubbed:
+        polled = await db.list_polled_characters(self.bot.db)
+        if not polled:
             await interaction.response.send_message("No polls have finished yet.", ephemeral=True)
             return
 
         embed = discord.Embed(
             title="Tier list so far",
-            description=_format_cumulative_tier_list(dubbed),
+            description=_format_cumulative_tier_list(polled),
             color=discord.Color.blurple(),
         )
-        embed.set_footer(text=f"{len(dubbed)} character{'s' if len(dubbed) != 1 else ''} polled")
+        embed.set_footer(text=f"{len(polled)} character{'s' if len(polled) != 1 else ''} polled")
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(

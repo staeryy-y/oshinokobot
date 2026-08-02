@@ -13,7 +13,7 @@
   {% if poll.closed_at %} · Closed {{ poll.closed_at[:16].replace('T', ' ') }}{% endif %}
 </p>
 {% if poll.status == 'closed' %}
-<p><strong>Officially dubbed:</strong> {{ poll.result_tier or 'No tier votes — not dubbed' }}</p>
+<p><strong>Result tier:</strong> {{ poll.result_tier or 'No tier votes — no result' }}</p>
 <p><strong>Core:</strong> {{ core_tag_name or 'No appeal votes — no core' }}</p>
 {% endif %}
 

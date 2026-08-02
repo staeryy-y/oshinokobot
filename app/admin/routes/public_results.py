@@ -60,10 +60,11 @@ async def public_results_page(request: Request) -> HTMLResponse:
 
     # 2. Characters grouped by "core" — the appeal tag that won each
     # character's poll (polls.result_tag_id, same majority-vote rule as
-    # the tier dub, computed once at close time).
+    # the tier result, computed once at close time).
+    polled = await db.list_polled_characters(conn)
     by_core: dict[str, list[dict]] = {}
     no_core: list[dict] = []
-    for row in await db.list_dubbed_characters(conn):
+    for row in polled:
         item = {"name": row["character_name"], "series": row["character_series"], "poll_id": row["poll_id"]}
         if row["core_tag_name"]:
             by_core.setdefault(row["core_tag_name"], []).append(item)
@@ -71,10 +72,19 @@ async def public_results_page(request: Request) -> HTMLResponse:
             no_core.append(item)
     core_groups = sorted(by_core.items(), key=lambda kv: (-len(kv[1]), kv[0].lower()))
 
+    # 3. Flat list of every individual poll, most recently closed first —
+    # reuses the same rows as section 2 (already one row per closed poll).
+    individual_results = list(reversed(polled))
+
     return templates.TemplateResponse(
         request,
         "public_results.html",
-        {"average_rows": average_rows, "core_groups": core_groups, "no_core": no_core},
+        {
+            "average_rows": average_rows,
+            "core_groups": core_groups,
+            "no_core": no_core,
+            "individual_results": individual_results,
+        },
     )
 
 

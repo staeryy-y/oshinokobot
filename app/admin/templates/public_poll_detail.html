@@ -9,7 +9,7 @@
 <img class="thumb" style="width:120px;height:120px"
      src="/media/{{ character.image_path.split('/')[-1] }}" alt="">
 <p class="muted">Closed {{ poll.closed_at[:16].replace('T', ' ') }}</p>
-<p><strong>Officially dubbed:</strong> {{ poll.result_tier or 'No tier votes — not dubbed' }}</p>
+<p><strong>Result tier:</strong> {{ poll.result_tier or 'No tier votes — no result' }}</p>
 <p><strong>Core:</strong> {{ core_tag_name or 'No appeal votes — no core' }}</p>
 
 <h2>Tier results</h2>

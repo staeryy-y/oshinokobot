@@ -146,7 +146,7 @@ Not in the original plan — added after the v1 build, on request:
 - **`/results` slash command** — the bot's first slash command. First
   version showed just the most recently closed poll's results; corrected
   to the server's **cumulative** tier list instead — every closed poll's
-  character grouped by its official dub, across the server's whole
+  character grouped by its result tier, across the server's whole
   history, since that's the actual point of the daily poll (building up a
   running tier list over time). See `architecture.md` → *Slash commands*.
 - **`/force-poll` slash command** — closes the current poll and posts a
@@ -154,7 +154,7 @@ Not in the original plan — added after the v1 build, on request:
   default. Same underlying `post_new_poll()` the admin UI's manual
   trigger button already used — one code path, two front doors. See
   `architecture.md` → *Slash commands*.
-- **Official dub**: closing a poll now computes `polls.result_tier` —
+- **Result tier**: closing a poll now computes `polls.result_tier` —
   whichever tier got the most votes, `NULL` if there were zero tier votes
   (not defaulted to any tier), ties broken randomly among only the tied
   tiers. See `architecture.md` → *Poll lifecycle*.
@@ -169,17 +169,29 @@ Not in the original plan — added after the v1 build, on request:
   it's a sticky allowlist. The existing "never repick a used character"
   rule applies inside whatever the active filter is. See `architecture.md`
   → *Game filter*.
-- **"Core"**: a second official result alongside the dub —
+- **"Core"**: a second result alongside the result tier —
   `polls.result_tag_id`, whichever appeal tag got the most votes, same
-  majority+random-tiebreak rule as `result_tier`. Shown everywhere the dub
-  is (Discord close embed, admin UI, public results page).
+  majority+random-tiebreak rule as `result_tier`. Shown everywhere the
+  result tier is (Discord close embed, admin UI, public results page).
 - **Public results page** (`/results`, `/results/<poll_id>`) — the one
-  deliberately unauthenticated part of the web app. Shows a cumulative
-  *average* tier ranking (distinct from the dub, which is the mode, not
-  the mean), characters grouped by core, and a per-character page with
-  the same tier/appeal/per-voter breakdown the admin poll detail page has
-  (minus the raw Discord user id). See `architecture.md` → *Public
-  results page*.
+  deliberately unauthenticated part of the web app. Three sections: "Tier
+  List" (a cumulative *average* tier ranking, distinct from `result_tier`
+  itself, which is the mode not the mean), "Types of Characters"
+  (grouped by core), and "Individual Poll Results" (every closed poll,
+  most recent first) — plus a per-character page with the same
+  tier/appeal/per-voter breakdown the admin poll detail page has (minus
+  the raw Discord user id). Deliberately no explanatory copy on the page,
+  just headers, tables, and data — an earlier version had a methodology
+  paragraph under each section, removed on request. See `architecture.md`
+  → *Public results page*.
+- **Poll-close backfill**: `result_tier`/`result_tag_id` are computed
+  once, at close time — any poll that closed before those columns (or
+  that computation) existed had them stuck `NULL` forever despite its
+  votes being fully intact, which surfaced as a real bug (the public
+  results page showing "no core" for characters that clearly had appeal
+  votes). `app/migrate.py` now backfills both fields for any closed poll
+  missing either one, every deploy, idempotently. See `architecture.md` →
+  *Migrations*.
 - **Poll deletion**: admins can delete a poll and its votes from
   `/admin/polls` (list) or the poll detail page. Since a character's
   "used" status is derived from whether a `polls` row exists for it,

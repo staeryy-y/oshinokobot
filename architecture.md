@@ -87,17 +87,17 @@ stateDiagram-v2
   `..., +N more` — a safety margin against Discord's 1024-character
   embed-field limit on a very active poll, not something expected to
   matter at this bot's normal scale.
-- **Official dub and core**: closing also computes `polls.result_tier`
-  (the "dub") and `polls.result_tag_id` (the "core") —
+- **Result tier and core**: closing also computes `polls.result_tier`
+  (the result tier) and `polls.result_tag_id` (the "core") —
   `_compute_result_tier`/`_compute_result_tag` in `app/bot/cogs/polls.py`,
-  both thin wrappers around one shared `_pick_majority` (majority vote,
-  zero votes on that question means no result at all rather than a
-  default one, a tie among the top entries broken with `random.choice`
-  among *only* the tied ones). Same rule, applied to each question
-  separately — the dub is whichever tier got the most votes, the core is
-  whichever appeal tag did. Shown as "Officially dubbed"/"Core" embed
-  fields alongside the results above, and in the admin UI and public
-  results page (see *Public results page* below).
+  both thin wrappers around one shared `pick_majority` (`app/majority.py`
+  — majority vote, zero votes on that question means no result at all
+  rather than a default one, a tie among the top entries broken with
+  `random.choice` among *only* the tied ones). Same rule, applied to each
+  question separately — the result tier is whichever tier got the most
+  votes, the core is whichever appeal tag did. Shown as "Result
+  tier"/"Core" embed fields alongside the results above, and in the admin
+  UI and public results page (see *Public results page* below).
 - **Voting**: both questions are independent button groups on the same
   message (`app/bot/views.py::PollView`) — one `discord.ui.Button` per
   archetype tag, plus five more for the tier. Each vote is an upsert
@@ -169,13 +169,13 @@ copy to every guild in `Config.guild_ids` via `copy_global_to`).
 consume it.
 
 - **`/results`** (`Polls.results`) — posts the server's **cumulative**
-  tier list: every closed poll's character, grouped by its official dub,
-  across the server's whole history (`db.list_dubbed_characters` +
+  tier list: every closed poll's character, grouped by its result tier,
+  across the server's whole history (`db.list_polled_characters` +
   `_format_cumulative_tier_list`) — not just the most recently finished
   poll. That was the first implementation and it was wrong: the point of
   the daily poll is building up a running tier list over time, and a
   single-poll recap doesn't show that. A closed poll with zero tier votes
-  (no dub) gets its own trailing "Not dubbed" line rather than being
+  (no result) gets its own trailing "No result" line rather than being
   silently dropped from the list. Open polls are excluded — only
   `status = 'closed'` counts. Not restricted to a specific channel or
   role.
@@ -218,9 +218,9 @@ guild_config                            -- singleton row (id = 1)
 polls
   id, character_id -> characters.id, channel_id, message_id (nullable
   until sent), status (open|closed), posted_at, closed_at (nullable),
-  result_tier (nullable — the official dub, see Poll lifecycle below),
-  result_tag_id -> archetype_tags.id (nullable — the official "core",
-  same majority-vote rule as result_tier, for the other question)
+  result_tier (nullable — the result tier, see Poll lifecycle below),
+  result_tag_id -> archetype_tags.id (nullable — the "core", same
+  majority-vote rule as result_tier, for the other question)
 
 appeal_votes
   poll_id -> polls.id, user_id, tag_id -> archetype_tags.id,
@@ -268,33 +268,43 @@ are the one deliberately unauthenticated part of the web app — no
 `/admin` prefix. Read-only; nothing in that file can mutate state. A link
 to it ("Public results ↗") sits in the admin nav for convenience.
 
-- **Cumulative average tier list** (`/results`) — every character's
-  *average* score across all its individual tier votes (S=5 down to D=1,
+Three sections, all on `/results` except the third:
+
+- **"Tier List"** — every character's *average* score across all its
+  individual tier votes (S=5 down to D=1,
   `app/admin/poll_results.py::TIER_VALUES`), ranked best-first. This is
   deliberately a different metric from `polls.result_tier` (the per-poll
   majority winner, i.e. the mode) — averaging captures spread that a pure
   majority vote throws away (a character with mixed S/A/B votes and one
-  with unanimous A votes can both "dub" as A, but their averages tell
-  different stories). Characters with zero tier votes have no average and
-  are left out of this ranking entirely, rather than shown with an
-  undefined score.
-- **Characters by core** (`/results`, same page) — grouped by
-  `polls.result_tag_id` (the character's "core": whichever appeal tag won
-  the most votes, computed with the exact same majority+random-tiebreak
-  rule as the tier dub — see *Poll lifecycle*). Characters with zero
-  appeal votes land in a trailing "No core yet" group instead of being
-  dropped.
-- **Per-character detail** (`/results/<poll_id>`) — the same tier/appeal
-  breakdown and per-voter table the admin poll-detail page shows, reached
-  by clicking a character's name in either list above. Only closed polls
-  are published here (`404` for an open or nonexistent poll id) — an open
-  poll's outcome isn't decided yet, and it's already visible live on
-  Discord for anyone in the server.
+  with unanimous A votes can both land on A as their result tier, but
+  their averages tell different stories). Characters with zero tier votes
+  have no average and are left out of this ranking entirely, rather than
+  shown with an undefined score.
+- **"Types of Characters"** — grouped by `polls.result_tag_id` (the
+  character's "core": whichever appeal tag won the most votes, computed
+  with the exact same majority+random-tiebreak rule as the result tier —
+  see *Poll lifecycle*). Characters with zero appeal votes land in a
+  trailing "No core yet" group instead of being dropped.
+- **"Individual Poll Results"** — a flat table of every closed poll,
+  most-recently-closed first, reusing the same `db.list_polled_characters`
+  rows as the "Types of Characters" section above (just reversed) rather
+  than a separate query.
+- **Per-character detail** (`/results/<poll_id>`, linked from every
+  character name above) — the same tier/appeal breakdown and per-voter
+  table the admin poll-detail page shows. Only closed polls are published
+  here (`404` for an open or nonexistent poll id) — an open poll's outcome
+  isn't decided yet, and it's already visible live on Discord for anyone
+  in the server.
 - **Character images are served publicly** via `GET /media/<filename>` —
   a second route distinct from the auth-gated `GET /admin/media/<filename>`,
   both sharing the same path-safety check
   (`app/admin/images.py::resolve_media_path`, factored out specifically so
   that check has one implementation, not two to keep in sync).
+- Deliberately no explanatory copy on the page itself beyond the section
+  headers and table/column labels — the first version had a paragraph
+  under each heading spelling out the methodology (average vs. majority,
+  the tie-break rule, etc.); removed on request in favor of the page just
+  showing the data.
 
 ## Poll deletion
 
@@ -359,6 +369,21 @@ redeploys, gitignored (runtime state, not source). Same treatment for
 `schema_migrations` table so `python -m app.migrate` is idempotent and
 safe to run on every deploy. `run.sh` runs it as its own step before
 `exec`-ing the app; the app's own startup never creates or alters tables.
+
+`run_migrations` also runs `_backfill_poll_results` after applying any
+pending `.sql` files — not a schema change, a **data** one: `result_tier`
+and `result_tag_id` are computed once, at the moment a poll closes, so any
+poll that closed before those columns (or that computation) existed has
+them `NULL` forever even though its votes are still sitting untouched in
+`tier_votes`/`appeal_votes`. That's a real bug that shipped, not a
+theoretical one — the public results page trusts the stored column, so
+those characters looked like they had no result at all. The backfill
+recomputes both fields for any closed poll where either is still `NULL`,
+using the same `pick_majority` (`app/majority.py`) the live code uses,
+and only writes the field that's actually missing (`COALESCE`) so a poll
+with one field already set never gets that one silently reassigned to a
+different random tie-break winner on a later run. Safe to run every
+deploy, same as the SQL migrations themselves.
 
 ### Secrets
 

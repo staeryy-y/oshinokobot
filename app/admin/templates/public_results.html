@@ -3,12 +3,7 @@
 {% block content %}
 <h1>Server results</h1>
 
-<h2>Cumulative average tier list</h2>
-<p class="muted">
-  Every character's average score across all its individual tier votes (S=5 down to D=1) —
-  not the same as a single poll's "official dub," which is whichever tier got the most votes,
-  not the mean.
-</p>
+<h2>Tier List</h2>
 {% if average_rows %}
 <table>
   <thead><tr><th>#</th><th>Character</th><th>Average</th><th>Nearest tier</th><th>Votes</th></tr></thead>
@@ -31,11 +26,7 @@
 <p class="empty">No tier votes yet.</p>
 {% endif %}
 
-<h2>Characters by core</h2>
-<p class="muted">
-  A character's "core" is whichever appeal tag won the most votes on its poll — same
-  majority-vote rule as the tier dub, for the other question.
-</p>
+<h2>Types of Characters</h2>
 {% if core_groups %}
 {% for tag_name, items in core_groups %}
 <h3>{{ tag_name }} <span class="muted">({{ items|length }})</span></h3>
@@ -62,5 +53,26 @@
   </li>
   {% endfor %}
 </ul>
+{% endif %}
+
+<h2>Individual Poll Results</h2>
+{% if individual_results %}
+<table>
+  <thead><tr><th>Character</th><th>Tier</th><th>Core</th></tr></thead>
+  <tbody>
+    {% for r in individual_results %}
+    <tr>
+      <td>
+        <a href="/results/{{ r.poll_id }}">{{ r.character_name }}</a>
+        {% if r.character_series %}<span class="muted">({{ r.character_series }})</span>{% endif %}
+      </td>
+      <td>{{ r.result_tier or '—' }}</td>
+      <td>{{ r.core_tag_name or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No polls yet.</p>
 {% endif %}
 {% endblock %}

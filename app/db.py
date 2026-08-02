@@ -339,12 +339,13 @@ async def list_polls(conn: aiosqlite.Connection, *, limit: int = 20) -> list[aio
     return await cursor.fetchall()
 
 
-async def list_dubbed_characters(conn: aiosqlite.Connection) -> list[aiosqlite.Row]:
-    """Every closed poll's character + its official dub (result_tier) and
+async def list_polled_characters(conn: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    """Every closed poll's character + its result tier (result_tier) and
     "core" (result_tag_id/name — the winning appeal tag), across the
-    server's whole history. Backs both the /results command's cumulative
-    tier list and the public results page's "characters by core" section,
-    so one query covers both rather than maintaining near-duplicate SQL."""
+    server's whole history. Backs the /results command's cumulative tier
+    list and the public results page's "types of characters" and
+    "individual poll results" sections, so one query covers all three
+    rather than maintaining near-duplicate SQL."""
     cursor = await conn.execute(
         """
         SELECT polls.id AS poll_id, characters.id AS character_id,
