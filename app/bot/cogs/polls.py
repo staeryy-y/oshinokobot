@@ -124,10 +124,30 @@ class Polls(commands.Cog):
         # Restart mid-poll shouldn't orphan the voting buttons — re-register
         # a view with the same custom_ids and current counts so clicks on
         # the still-open message keep working (same pattern as scheduler-bot).
-        open_poll = await db.get_open_poll(self.bot.db)
-        if open_poll is not None:
+        # This is the actual restart-safety mechanism for an in-progress
+        # poll; logged explicitly (both branches) so every restart leaves a
+        # visible record of whether there was a poll to reattach to, rather
+        # than this happening silently. Wrapped in try/except so a transient
+        # DB hiccup at exactly this moment (cog_load runs inside setup_hook,
+        # before the gateway connection completes) can't take down the
+        # entire bot login — better to come up with the open poll's buttons
+        # un-reattached (fixable by a `/force-poll` or another restart) than
+        # to not come up at all.
+        try:
+            open_poll = await db.get_open_poll(self.bot.db)
+            if open_poll is None:
+                logger.info("cog_load: no open poll to reattach")
+                return
             updated_view = await views.rebuild_view(self.bot, open_poll["id"])
             self.bot.add_view(updated_view)
+            logger.info(
+                "cog_load: reattached voting buttons for open poll #%s", open_poll["id"]
+            )
+        except Exception:
+            logger.exception(
+                "cog_load: failed to reattach the open poll's voting buttons — "
+                "its Discord message may stop responding to clicks until the next restart"
+            )
 
     @tasks.loop(minutes=1)
     async def daily_poll_check(self) -> None:

@@ -365,11 +365,14 @@ async def get_tier_votes_for_closed_polls(conn: aiosqlite.Connection) -> list[ai
     """Every individual tier vote cast on any closed poll, with the
     character it belongs to — the raw material for the public results
     page's cumulative *average* tier ranking (as opposed to result_tier,
-    which is the majority/mode, not the mean)."""
+    which is the majority/mode, not the mean). image_path rides along so
+    the public tier-list grid can show a thumbnail without a second query
+    per character."""
     cursor = await conn.execute(
         """
         SELECT characters.id AS character_id, characters.name AS character_name,
-               characters.series AS character_series, polls.id AS poll_id, tier_votes.tier
+               characters.series AS character_series, characters.image_path,
+               polls.id AS poll_id, tier_votes.tier
         FROM tier_votes
         JOIN polls ON polls.id = tier_votes.poll_id
         JOIN characters ON characters.id = polls.character_id

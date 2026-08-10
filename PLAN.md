@@ -205,6 +205,16 @@ Not in the original plan — added after the v1 build, on request:
   column (migration `0007_appeal_votes_multi.sql`) so multiple picks per
   user can coexist. The tier question is unchanged — still one rating,
   still overwritable. See `architecture.md` → *Poll lifecycle*.
+- **Tier List becomes a real grid**: the public results page's "Tier
+  List" section was a flat ranked table; it's now an actual S/A/B/C/D
+  grid — one colored row per tier, holding character thumbnails, all
+  five rows always shown even when empty. See `architecture.md` →
+  *Public results page*.
+- **Restart-safety logging**: `cog_load`'s open-poll reattachment (see
+  *Poll lifecycle* → restart safety, in `architecture.md`) now logs
+  explicitly whether there was a poll to reattach to, and is wrapped in
+  its own try/except so a transient DB hiccup at exactly that moment
+  can't take the whole bot login down with it.
 - **Daily scheduler resilience**: `daily_poll_check` (the `tasks.loop`
   that drives daily posting) turned out to be a real bug in production —
   discord.py silently stops a task loop for good the moment its body

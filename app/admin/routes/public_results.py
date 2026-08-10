@@ -8,6 +8,10 @@ from ..images import resolve_media_path
 from ..poll_results import TIER_VALUES, build_voter_rows, nearest_tier
 from ..templating import templates
 
+# Display order for the tier-list grid, best first — same convention as
+# app/bot/views.py::TIERS.
+TIER_ORDER = ["S", "A", "B", "C", "D"]
+
 # Deliberately no require_admin dependency anywhere in this file — this is
 # the public-facing router (mounted without an /admin prefix in server.py).
 # It only ever reads; nothing here can mutate state.
@@ -39,6 +43,7 @@ async def public_results_page(request: Request) -> HTMLResponse:
             {
                 "name": vote["character_name"],
                 "series": vote["character_series"],
+                "image_path": vote["image_path"],
                 "poll_id": vote["poll_id"],
                 "scores": [],
             },
@@ -49,6 +54,7 @@ async def public_results_page(request: Request) -> HTMLResponse:
         {
             "name": entry["name"],
             "series": entry["series"],
+            "image_path": entry["image_path"],
             "poll_id": entry["poll_id"],
             "average": sum(entry["scores"]) / len(entry["scores"]),
             "nearest_tier": nearest_tier(sum(entry["scores"]) / len(entry["scores"])),
@@ -57,6 +63,16 @@ async def public_results_page(request: Request) -> HTMLResponse:
         for entry in by_character.values()
     ]
     average_rows.sort(key=lambda row: (-row["average"], -row["vote_count"], row["name"].lower()))
+
+    # A real tier-list grid — S/A/B/C/D rows, each holding the characters
+    # whose average nearest_tier landed there (already ranked best-first
+    # from the sort above) — rather than a flat table. Every tier gets its
+    # own row even when empty, same "consistent shape" convention as the
+    # bot's own tier-result formatting (app/bot/cogs/polls.py).
+    by_nearest_tier: dict[str, list[dict]] = {tier: [] for tier in TIER_ORDER}
+    for row in average_rows:
+        by_nearest_tier[row["nearest_tier"]].append(row)
+    tier_grid = [(tier, by_nearest_tier[tier]) for tier in TIER_ORDER]
 
     # 2. Characters grouped by "core" — the appeal tag that won each
     # character's poll (polls.result_tag_id, same majority-vote rule as
@@ -80,7 +96,7 @@ async def public_results_page(request: Request) -> HTMLResponse:
         request,
         "public_results.html",
         {
-            "average_rows": average_rows,
+            "tier_grid": tier_grid,
             "core_groups": core_groups,
             "no_core": no_core,
             "individual_results": individual_results,

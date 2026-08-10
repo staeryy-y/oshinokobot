@@ -8,6 +8,18 @@
   --danger: #d9534f;
   --ok: #3a9d5c;
   --card-bg: #ffffff;
+
+  /* Tier-list grid (public results page) — one hue, ordinal light→dark
+     ramp (S darkest/most prominent down to D lightest), each paired with
+     whichever label ink (white vs near-black) clears WCAG contrast
+     against that step. Not a categorical palette — S/A/B/C/D is an
+     ordered ranking, so it gets a single-hue ramp rather than distinct
+     hues per tier (see the dataviz skill's ordinal-ramp guidance). */
+  --tier-s: #104281; --tier-s-ink: #ffffff;
+  --tier-a: #1c5cab; --tier-a-ink: #ffffff;
+  --tier-b: #2a78d6; --tier-b-ink: #ffffff;
+  --tier-c: #5598e7; --tier-c-ink: #12121a;
+  --tier-d: #86b6ef; --tier-d-ink: #12121a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -20,6 +32,15 @@
     --danger: #e5766f;
     --ok: #4fbd79;
     --card-bg: #1f1f26;
+
+    /* Same hue family, restepped for a dark surface — lighter steps read
+       as "more prominent" here since a dark step would just sink into
+       the background instead of standing out. */
+    --tier-s: #9ec5f4; --tier-s-ink: #12121a;
+    --tier-a: #6da7ec; --tier-a-ink: #12121a;
+    --tier-b: #3987e5; --tier-b-ink: #12121a;
+    --tier-c: #256abf; --tier-c-ink: #ffffff;
+    --tier-d: #184f95; --tier-d-ink: #ffffff;
   }
 }
 
@@ -131,6 +152,88 @@ th { color: var(--muted); font-weight: 600; }
 .thumb {
   width: 40px; height: 40px; object-fit: cover; border-radius: 4px;
   vertical-align: middle; margin-right: 0.5rem;
+}
+
+/* Tier-list grid — public results page. One row per tier (S/A/B/C/D,
+   always all five so an empty tier still reads as "checked, nothing
+   here" rather than being silently absent), a colored label on the left,
+   and the characters that landed there as image chips wrapping to the
+   right. */
+.tier-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.tier-row {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+.tier-label {
+  flex: 0 0 3.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.tier-label.tier-s { background: var(--tier-s); color: var(--tier-s-ink); }
+.tier-label.tier-a { background: var(--tier-a); color: var(--tier-a-ink); }
+.tier-label.tier-b { background: var(--tier-b); color: var(--tier-b-ink); }
+.tier-label.tier-c { background: var(--tier-c); color: var(--tier-c-ink); }
+.tier-label.tier-d { background: var(--tier-d); color: var(--tier-d-ink); }
+
+.tier-characters {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.65rem;
+  padding: 0.6rem;
+  flex: 1;
+}
+
+.tier-character {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 4.75rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.tier-character img {
+  width: 4rem;
+  height: 4rem;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.tier-character span {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
+}
+
+.tier-character:hover span { color: var(--accent); }
+
+.tier-empty {
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.85rem;
 }
 
 .muted { color: var(--muted); font-size: 0.85rem; }

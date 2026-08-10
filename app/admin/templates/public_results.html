@@ -4,27 +4,26 @@
 <h1>Server results</h1>
 
 <h2>Tier List</h2>
-{% if average_rows %}
-<table>
-  <thead><tr><th>#</th><th>Character</th><th>Average</th><th>Nearest tier</th><th>Votes</th></tr></thead>
-  <tbody>
-    {% for r in average_rows %}
-    <tr>
-      <td class="muted">{{ loop.index }}</td>
-      <td>
-        <a href="/results/{{ r.poll_id }}">{{ r.name }}</a>
-        {% if r.series %}<span class="muted">({{ r.series }})</span>{% endif %}
-      </td>
-      <td>{{ "%.2f"|format(r.average) }}</td>
-      <td>{{ r.nearest_tier }}</td>
-      <td class="muted">{{ r.vote_count }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p class="empty">No tier votes yet.</p>
-{% endif %}
+<div class="tier-grid">
+  {% for tier, characters in tier_grid %}
+  <div class="tier-row">
+    <div class="tier-label tier-{{ tier|lower }}">{{ tier }}</div>
+    {% if characters %}
+    <div class="tier-characters">
+      {% for r in characters %}
+      <a class="tier-character" href="/results/{{ r.poll_id }}"
+         title="{{ r.name }}{% if r.series %} ({{ r.series }}){% endif %} — {{ '%.2f'|format(r.average) }} avg, {{ r.vote_count }} vote{{ 's' if r.vote_count != 1 }}">
+        <img src="/media/{{ r.image_path.split('/')[-1] }}" alt="{{ r.name }}">
+        <span>{{ r.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="tier-empty">No characters yet</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
 
 <h2>Types of Characters</h2>
 {% if core_groups %}

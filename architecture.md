@@ -296,14 +296,24 @@ Three sections, all on `/results` except the third:
 
 - **"Tier List"** — every character's *average* score across all its
   individual tier votes (S=5 down to D=1,
-  `app/admin/poll_results.py::TIER_VALUES`), ranked best-first. This is
-  deliberately a different metric from `polls.result_tier` (the per-poll
-  majority winner, i.e. the mode) — averaging captures spread that a pure
-  majority vote throws away (a character with mixed S/A/B votes and one
-  with unanimous A votes can both land on A as their result tier, but
-  their averages tell different stories). Characters with zero tier votes
-  have no average and are left out of this ranking entirely, rather than
-  shown with an undefined score.
+  `app/admin/poll_results.py::TIER_VALUES`), bucketed into its
+  `nearest_tier` and rendered as an actual S/A/B/C/D grid (`.tier-grid` in
+  `admin.css`) — a colored tier row holding image chips for every
+  character that landed there, not a flat ranked table. All five rows
+  always render, even empty ones ("No characters yet"), same
+  consistent-shape convention as the bot's own `_format_tier_results`.
+  Within a row, characters are still ordered by the same average-score
+  sort. The average itself is deliberately a different metric from
+  `polls.result_tier` (the per-poll majority winner, i.e. the mode) —
+  averaging captures spread that a pure majority vote throws away (a
+  character with mixed S/A/B votes and one with unanimous A votes can
+  both land on A as their result tier, but their averages tell different
+  stories). Characters with zero tier votes have no average and are left
+  out of the grid entirely, rather than shown with an undefined score.
+  The row colors are a single-hue **ordinal** ramp (light→dark, S most
+  prominent down to D least), not a categorical palette — S/A/B/C/D is an
+  ordered ranking, not independent identities, so one hue carries the
+  order instead of five unrelated hues.
 - **"Types of Characters"** — grouped by `polls.result_tag_id` (the
   character's "core": whichever appeal tag won the most votes, computed
   with the exact same majority+random-tiebreak rule as the result tier —
