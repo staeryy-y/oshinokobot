@@ -64,6 +64,19 @@ stateDiagram-v2
   comparison, not an in-memory flag — a restart landing inside the same
   eligible minute won't double-post, unlike a naive "have I already checked
   this minute" flag would need to survive a restart to keep working.
+- **Scheduler resilience**: `discord.py`'s `tasks.loop` silently stops for
+  good the moment its body raises anything other than a recognized
+  reconnect-able network error — a real bug that shipped, not theoretical:
+  one transient failure (a locked db, a rate limit on `channel.send`, a
+  bad `poll_timezone` string) would permanently end daily posting with
+  nothing louder than a single buried traceback, and nobody would notice
+  short of watching stdout at the exact moment. `daily_poll_check`'s body
+  is now wrapped in a try/except that logs and lets the next minute's tick
+  retry instead of propagating, plus a `.error` handler as a backstop that
+  restarts the loop if it ever stops anyway. A failed `channel.send`
+  inside `_advance_daily_poll` no longer leaves a message-less poll open
+  forever with its character burned from the pool for nothing — the poll
+  row is deleted so the character falls back into the unused pool.
 - **Character selection**: uniformly random from characters with no row in
   `polls` yet (`db.pick_random_unused_character`). Once a character is
   posted, it's permanently "used," even if the poll technically failed
@@ -100,13 +113,18 @@ stateDiagram-v2
   UI and public results page (see *Public results page* below).
 - **Voting**: both questions are independent button groups on the same
   message (`app/bot/views.py::PollView`) — one `discord.ui.Button` per
-  archetype tag, plus five more for the tier. Each vote is an upsert
-  (`PRIMARY KEY (poll_id, user_id)` on both vote tables) — re-voting
-  changes your answer, it doesn't stack. Every click rebuilds and
-  re-renders the whole view via `edit_message`, so button labels carry
-  live counts — the visible state change *is* the confirmation, no
-  separate ephemeral "you voted for X" reply (same reasoning scheduler-bot
-  used for its day/hour buttons).
+  archetype tag, plus five more for the tier. The two questions behave
+  differently: tier voting is an upsert (`PRIMARY KEY (poll_id, user_id)`
+  on `tier_votes`) — re-picking changes your rating, it doesn't stack.
+  Appeal voting is **multi-select** — each tag button toggles that one
+  pick on/off independently (`db.toggle_appeal_vote`, `PRIMARY KEY
+  (poll_id, user_id, tag_id)` on `appeal_votes`), so a voter can mark a
+  character as appealing to more than one audience instead of being
+  forced to choose exactly one. Every click rebuilds and re-renders the
+  whole view via `edit_message`, so button labels carry live counts — the
+  visible state change *is* the confirmation, no separate ephemeral "you
+  voted for X" reply (same reasoning scheduler-bot used for its day/hour
+  buttons).
 - **Layout**: tag buttons fill rows 0-3 (5 per row), tier buttons always
   sit alone on row 4. That full empty row of gap is what makes "these are
   two different questions" visually obvious, backed up by two embed
@@ -225,7 +243,10 @@ polls
 appeal_votes
   poll_id -> polls.id, user_id, tag_id -> archetype_tags.id,
   display_name (nullable — snapshot at vote time, see below)
-  PK (poll_id, user_id)                 -- one tag per user, overwritable
+  PK (poll_id, user_id, tag_id)         -- multi-select: several tags per
+                                            user, each toggled on/off
+                                            independently (migration
+                                            0007_appeal_votes_multi.sql)
 
 tier_votes
   poll_id -> polls.id, user_id, tier (S|A|B|C|D),
@@ -239,8 +260,11 @@ rows from before that migration have none). Storing it beats resolving
 `user_id` back through Discord's API on every admin-page render: it works
 in admin-only mode (no bot connection), survives a voter leaving the
 server, and doesn't cost an API call per view. Re-voting refreshes the
-stored name (`ON CONFLICT ... DO UPDATE`), so a nickname change shows up
-next time that person votes — it's a snapshot, not a live-synced value.
+stored name on `tier_votes` (`ON CONFLICT ... DO UPDATE`); on
+`appeal_votes` it's captured whenever a tag is newly toggled on (a nickname
+change shows up the next time that person picks a *new* tag, not
+necessarily on every click, since toggling an existing pick back off just
+deletes the row) — it's a snapshot either way, not a live-synced value.
 Both the admin poll-detail page (`/admin/polls/<id>`) and the public
 per-character page (`/results/<id>`) merge both vote tables by `user_id`
 into one per-voter table (`app/admin/poll_results.py::build_voter_rows`,

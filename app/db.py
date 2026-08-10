@@ -384,23 +384,37 @@ async def get_tier_votes_for_closed_polls(conn: aiosqlite.Connection) -> list[ai
 # ---------------------------------------------------------------------------
 
 
-async def upsert_appeal_vote(
+async def toggle_appeal_vote(
     conn: aiosqlite.Connection,
     *,
     poll_id: int,
     user_id: int,
     tag_id: int,
     display_name: str | None = None,
-) -> None:
+) -> bool:
+    """Appeal tags are multi-select — unlike a tier vote (one rating),
+    a character can appeal to more than one audience, so each tag button
+    toggles that one pick on/off independently rather than overwriting
+    whatever else the user already picked. Returns True if this click
+    selected the tag, False if it removed an existing pick."""
+    cursor = await conn.execute(
+        "SELECT 1 FROM appeal_votes WHERE poll_id = ? AND user_id = ? AND tag_id = ?",
+        (poll_id, user_id, tag_id),
+    )
+    if await cursor.fetchone() is not None:
+        await conn.execute(
+            "DELETE FROM appeal_votes WHERE poll_id = ? AND user_id = ? AND tag_id = ?",
+            (poll_id, user_id, tag_id),
+        )
+        await conn.commit()
+        return False
+
     await conn.execute(
-        """
-        INSERT INTO appeal_votes (poll_id, user_id, tag_id, display_name) VALUES (?, ?, ?, ?)
-        ON CONFLICT (poll_id, user_id)
-        DO UPDATE SET tag_id = excluded.tag_id, display_name = excluded.display_name
-        """,
+        "INSERT INTO appeal_votes (poll_id, user_id, tag_id, display_name) VALUES (?, ?, ?, ?)",
         (poll_id, user_id, tag_id, display_name),
     )
     await conn.commit()
+    return True
 
 
 async def upsert_tier_vote(

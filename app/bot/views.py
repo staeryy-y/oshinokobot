@@ -82,7 +82,10 @@ class TagButton(discord.ui.Button):
             )
             return
 
-        await db.upsert_appeal_vote(  # type: ignore[attr-defined]
+        # Multi-select: clicking a tag toggles that one pick on/off rather
+        # than replacing whatever else the user already picked, so a voter
+        # can mark a character as appealing to more than one audience.
+        await db.toggle_appeal_vote(  # type: ignore[attr-defined]
             bot.db,
             poll_id=self.poll_id,
             user_id=interaction.user.id,

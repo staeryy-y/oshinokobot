@@ -17,25 +17,30 @@ def build_voter_rows(
 ) -> list[dict]:
     """Merges one poll's tier + appeal votes into one row per voter — the
     two questions are independent, so a voter who only answered one still
-    gets a row, with '—' for the one they skipped. Shared by the admin
-    poll detail page and the public results page, since both show this
-    same per-voter breakdown."""
+    gets a row, with '—' for the one they skipped. Appeal tags are
+    multi-select (a voter can pick more than one), so each voter carries a
+    list of tag names rather than a single one — empty if they skipped that
+    question entirely. Shared by the admin poll detail page and the public
+    results page, since both show this same per-voter breakdown."""
     tier_by_user = {vote["user_id"]: vote for vote in tier_votes}
-    appeal_by_user = {vote["user_id"]: vote for vote in appeal_votes}
+    appeal_by_user: dict[int, list] = {}
+    for vote in appeal_votes:
+        appeal_by_user.setdefault(vote["user_id"], []).append(vote)
 
     rows = []
     for user_id in set(tier_by_user) | set(appeal_by_user):
         tier_vote = tier_by_user.get(user_id)
-        appeal_vote = appeal_by_user.get(user_id)
-        display_name = (tier_vote or appeal_vote)["display_name"] or f"user {user_id}"
+        appeal_votes_for_user = appeal_by_user.get(user_id, [])
+        first_appeal_vote = appeal_votes_for_user[0] if appeal_votes_for_user else None
+        display_name = (tier_vote or first_appeal_vote)["display_name"] or f"user {user_id}"
         rows.append(
             {
                 "user_id": user_id,
                 "display_name": display_name,
                 "tier": tier_vote["tier"] if tier_vote else None,
-                "appeal_tag": tags_by_id.get(appeal_vote["tag_id"], "unknown tag")
-                if appeal_vote
-                else None,
+                "appeal_tags": [
+                    tags_by_id.get(vote["tag_id"], "unknown tag") for vote in appeal_votes_for_user
+                ],
             }
         )
     rows.sort(key=lambda row: row["display_name"].lower())

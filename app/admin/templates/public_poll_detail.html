@@ -39,13 +39,13 @@
 <h2>Votes by user</h2>
 {% if voter_rows %}
 <table>
-  <thead><tr><th>User</th><th>Tier</th><th>Appeal tag</th></tr></thead>
+  <thead><tr><th>User</th><th>Tier</th><th>Appeal tags</th></tr></thead>
   <tbody>
     {% for v in voter_rows %}
     <tr>
       <td>{{ v.display_name }}</td>
       <td>{{ v.tier or '—' }}</td>
-      <td>{{ v.appeal_tag or '—' }}</td>
+      <td>{{ v.appeal_tags | join(', ') if v.appeal_tags else '—' }}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -131,27 +131,50 @@ class Polls(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def daily_poll_check(self) -> None:
-        config = await db.get_guild_config(self.bot.db)
-        if config["channel_id"] is None:
-            return
+        # discord.ext.tasks silently stops a loop for good the moment its
+        # body raises anything it doesn't recognize as a reconnect-able
+        # network error (see the .error handler below) — a single transient
+        # hiccup (a locked db, a rate limit on channel.send, a bad timezone
+        # string saved in config) would otherwise permanently end daily
+        # posting with nothing louder than one buried traceback in the logs.
+        # Catching everything here means one bad minute just gets retried
+        # next minute instead of killing the scheduler.
+        try:
+            config = await db.get_guild_config(self.bot.db)
+            if config["channel_id"] is None:
+                return
 
-        tz = ZoneInfo(config["poll_timezone"])
-        now = datetime.now(tz)
-        if now.strftime("%H:%M") < config["poll_post_time"]:
-            return
+            tz = ZoneInfo(config["poll_timezone"])
+            now = datetime.now(tz)
+            if now.strftime("%H:%M") < config["poll_post_time"]:
+                return
 
-        # Idempotency comes from DB state, not an in-memory flag — comparing
-        # the most recent poll's posted date (in the configured timezone)
-        # survives a bot restart inside the same minute without double-posting.
-        recent = await db.list_polls(self.bot.db, limit=1)
-        if recent and _poll_local_date(recent[0], tz) == now.date():
-            return
+            # Idempotency comes from DB state, not an in-memory flag —
+            # comparing the most recent poll's posted date (in the
+            # configured timezone) survives a bot restart inside the same
+            # minute without double-posting.
+            recent = await db.list_polls(self.bot.db, limit=1)
+            if recent and _poll_local_date(recent[0], tz) == now.date():
+                return
 
-        await self._advance_daily_poll(config)
+            await self._advance_daily_poll(config)
+        except Exception:
+            logger.exception("daily_poll_check tick failed — will retry next minute")
 
     @daily_poll_check.before_loop
     async def _before_daily_poll_check(self) -> None:
         await self.bot.wait_until_ready()
+
+    @daily_poll_check.error
+    async def _daily_poll_check_error(self, error: BaseException) -> None:
+        # Backstop for anything that still escapes the try/except above
+        # (e.g. a crash inside before_loop, or during the loop machinery
+        # itself) — the try/except is the main fix, this just makes sure
+        # the scheduler comes back instead of staying dead until the next
+        # full process restart.
+        logger.exception("daily_poll_check crashed — restarting the loop", exc_info=error)
+        if not self.daily_poll_check.is_running():
+            self.daily_poll_check.restart()
 
     async def post_new_poll(self) -> tuple[bool, str]:
         """Manual override for the admin UI's "Post a new poll now" button —
@@ -229,7 +252,11 @@ class Polls(commands.Cog):
         # Labels the two button groups below — the row gap between them
         # (tags fill rows 0-3, tiers always sit alone on row 4) is the visual
         # separation; these headers are what actually says what each is for.
-        embed.add_field(name="Who would this appeal to?", value="Tap a tag below.", inline=False)
+        embed.add_field(
+            name="Who would this appeal to?",
+            value="Tap as many tags below as apply — pick more than one if it fits.",
+            inline=False,
+        )
         embed.add_field(
             name="What tier would you rate this character?",
             value="Tap S–D below.",
@@ -241,11 +268,26 @@ class Polls(commands.Cog):
         view = views.PollView(poll_id, tags)
         self.bot.add_view(view)
 
-        message = await channel.send(
-            embed=embed,
-            file=discord.File(character["image_path"], filename=filename),
-            view=view,
-        )
+        try:
+            message = await channel.send(
+                embed=embed,
+                file=discord.File(character["image_path"], filename=filename),
+                view=view,
+            )
+        except discord.HTTPException:
+            # The poll row (and thus the character's "used" status) was
+            # already created above so the view's custom_ids could embed
+            # its id — undo that on a failed send instead of leaving a
+            # message-less poll open forever and a character permanently
+            # burned from the pool for nothing.
+            logger.exception(
+                "failed to send poll message for character %r in channel %s — freeing the poll",
+                character["name"],
+                channel.id,
+            )
+            await db.delete_poll(self.bot.db, poll_id)
+            return
+
         await db.set_poll_message_id(self.bot.db, poll_id, message.id)
         logger.info(
             "posted poll #%s for character %r in channel %s", poll_id, character["name"], channel.id

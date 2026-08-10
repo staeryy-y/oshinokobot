@@ -8,7 +8,7 @@ Directly modeled on `~/Projects/scheduler-bot`'s conventions (confirmed against 
 
 ## Confirmed decisions
 
-- **Appeal vote** = fixed archetype/audience tags, admin-managed (e.g. "tomboy fans", "kuudere fans"). Voter picks one tag from a dropdown.
+- **Appeal vote** = fixed archetype/audience tags, admin-managed (e.g. "tomboy fans", "kuudere fans"). ~~Voter picks one tag from a dropdown.~~ — **superseded**: switched to buttons after initial build (see assumption 7 below), then to multi-select buttons — a voter can pick as many tags as apply, not just one — since a character can plausibly appeal to more than one audience. See `architecture.md` → *Poll lifecycle*.
 - **Single process**: FastAPI/uvicorn is the thing bound to `127.0.0.1:$PORT`; discord.py's gateway client runs as a background `asyncio` task inside the same event loop (started from FastAPI's `lifespan`). One deploy, one SQLite file, no cross-process sync.
 - **Scheduling**: a daily background task picks a **random character from the unused pool** (characters never yet posted) and posts it. No admin-curated ordering needed for v1.
 - **Scope**: single guild (bot only ever lives in one server — `DISCORD_GUILD_ID` in `.env`, like scheduler-bot), but the **posting channel is admin-configurable** in the DB, not hardcoded.
@@ -16,7 +16,7 @@ Directly modeled on `~/Projects/scheduler-bot`'s conventions (confirmed against 
 ## Assumptions (flag anything wrong — adjust before building)
 
 1. **Poll lifecycle**: a poll stays open until the *next* day's poll job runs, at which point it auto-closes (final tallies locked, message edited to show results) and the new poll posts. No manual `/close` command, no fixed 24h timer — simplest MVP, avoids a separate expiry scheduler.
-2. **Voting**: one vote per user per question, changeable until the poll closes (re-picking updates your vote, doesn't stack). Both votes required to fully participate, but they're independent — voting on tier doesn't require voting on appeal, or vice versa.
+2. **Voting**: one vote per user per question, changeable until the poll closes (re-picking updates your vote, doesn't stack). Both votes required to fully participate, but they're independent — voting on tier doesn't require voting on appeal, or vice versa. ~~One vote per user per question~~ — **superseded** for the appeal question specifically: it's now multi-select, each tag toggles independently, so a user can have several appeal votes on one poll at once. The tier question is unchanged (one rating, still overwritable). See `architecture.md` → *Poll lifecycle*.
 3. **Images**: admin uploads image files directly (not URLs) via the FastAPI form; stored on local disk under a `media/` dir in the persistent working directory (gitignored, survives redeploys — same pattern as the SQLite file). The bot attaches the file directly to the Discord message (`discord.File`) rather than needing a public URL, so the admin site never needs to be internet-reachable for images to show up.
 4. ~~**Auth**: literal HTTP Basic Auth (browser-native prompt) on all `/admin/*` routes~~ — **superseded**: replaced with a real login page + server-side sessions (SQLite-backed, opaque cookie) after the initial build. See `architecture.md` for the as-built version. Password hashing (stdlib `hashlib.pbkdf2_hmac`, no bcrypt/argon2 C-extension dependency) and CLI-only user creation via `python -m cli.create_user` are unchanged.
 5. **Health check**: `/healthz` is a small unauthenticated JSON `200 OK` route, separate from the admin UI (which lives under `/admin/*` behind auth) — so watcher's poller never gets bounced through a login redirect or counted against admin traffic.
@@ -85,7 +85,7 @@ polls
 
 appeal_votes
   poll_id -> polls.id, user_id (discord id), tag_id -> archetype_tags.id
-  PK (poll_id, user_id)                 -- one tag per user, overwritable
+  PK (poll_id, user_id, tag_id)         -- multi-select: several tags per user, each toggled independently (superseded from the original one-tag-per-user PK — see architecture.md)
 
 tier_votes
   poll_id -> polls.id, user_id (discord id), tier enum(S,A,B,C,D)
@@ -198,6 +198,25 @@ Not in the original plan — added after the v1 build, on request:
   deleting a poll fully frees the character back into the unused pool —
   not just a hide. Doesn't touch a still-live Discord message if the
   poll being deleted was open. See `architecture.md` → *Poll deletion*.
+- **Multi-select appeal votes**: a voter can now pick more than one
+  archetype tag per poll — each tag button toggles that pick on/off
+  independently (`db.toggle_appeal_vote`) instead of the old
+  one-tag-per-user upsert. `appeal_votes`' primary key grew a `tag_id`
+  column (migration `0007_appeal_votes_multi.sql`) so multiple picks per
+  user can coexist. The tier question is unchanged — still one rating,
+  still overwritable. See `architecture.md` → *Poll lifecycle*.
+- **Daily scheduler resilience**: `daily_poll_check` (the `tasks.loop`
+  that drives daily posting) turned out to be a real bug in production —
+  discord.py silently stops a task loop for good the moment its body
+  raises anything that isn't a recognized reconnect-able network error,
+  with nothing louder than one buried traceback in the logs. Any
+  transient failure (a locked db, a rate limit on `channel.send`, a typo'd
+  timezone saved in config) permanently ended daily posting until the
+  whole process was restarted. Now wrapped in a try/except that logs and
+  retries next minute instead of dying, plus a `.error` handler that
+  restarts the loop as a backstop, and a failed `channel.send` no longer
+  leaves a message-less poll open with a character burned from the pool
+  for nothing. See `architecture.md` → *Poll lifecycle*.
 
 ## Open for later (not blocking v1)
 
