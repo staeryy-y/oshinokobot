@@ -292,6 +292,17 @@ are the one deliberately unauthenticated part of the web app — no
 `/admin` prefix. Read-only; nothing in that file can mutate state. A link
 to it ("Public results ↗") sits in the admin nav for convenience.
 
+`/results` takes an optional `?series=<game>` query param — a dropdown
+above the three sections narrows all of them to one game/show at a time,
+sourced from whichever `characters.series` values actually have a closed
+poll (not every series ever uploaded, so there's never an option that
+lands on an empty page). Plain GET query param, not a stored preference,
+so a filtered view is a shareable/bookmarkable URL like the rest of the
+page; the `<select>` auto-submits via `onchange` with a plain submit
+button as the no-JS fallback. Distinct from `guild_config.active_series`
+(the admin-configured pool the *daily poll itself* draws from, see *Game
+filter* below) — this only changes what's displayed here.
+
 Three sections, all on `/results` except the third:
 
 - **"Tier List"** — every character's *average* score across all its

@@ -205,6 +205,11 @@ Not in the original plan — added after the v1 build, on request:
   column (migration `0007_appeal_votes_multi.sql`) so multiple picks per
   user can coexist. The tier question is unchanged — still one rating,
   still overwritable. See `architecture.md` → *Poll lifecycle*.
+- **Public results game filter**: `/results?series=<game>` narrows all
+  three sections to one game/show at a time, via a dropdown sourced from
+  whichever series actually have a closed poll. Distinct from
+  `guild_config.active_series` (the daily-posting pool) — display-only.
+  See `architecture.md` → *Public results page*.
 - **Tier List becomes a real grid**: the public results page's "Tier
   List" section was a flat ranked table; it's now an actual S/A/B/C/D
   grid — one colored row per tier, holding character thumbnails, all

@@ -3,6 +3,18 @@
 {% block content %}
 <h1>Server results</h1>
 
+<form method="get" action="/results" class="filter-bar">
+  <label for="series-filter">Game</label>
+  <select id="series-filter" name="series" onchange="this.form.submit()">
+    <option value=""{{ ' selected' if not selected_series }}>All games</option>
+    {% for s in available_series %}
+    <option value="{{ s }}"{{ ' selected' if s == selected_series }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">Filter</button></noscript>
+  {% if selected_series %}<a href="/results" class="muted">Clear filter</a>{% endif %}
+</form>
+
 <h2>Tier List</h2>
 <div class="tier-grid">
   {% for tier, characters in tier_grid %}

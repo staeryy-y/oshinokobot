@@ -30,14 +30,38 @@ async def public_media(request: Request, filename: str) -> FileResponse:
 
 
 @router.get("/results", response_class=HTMLResponse)
-async def public_results_page(request: Request) -> HTMLResponse:
+async def public_results_page(request: Request, series: str | None = None) -> HTMLResponse:
     conn = request.app.state.db
+
+    # `series` (?series=<game>) narrows all three sections below to one
+    # game/show at a time — a plain GET query param rather than a stored
+    # preference, so the filtered view is a shareable/bookmarkable URL like
+    # the rest of this page. Blank/missing means unfiltered ("All games").
+    # Distinct from guild_config.active_series (the admin-configured daily
+    # *posting* pool) — this only affects what's displayed here.
+    selected_series = series or None
+
+    tier_vote_rows = await db.get_tier_votes_for_closed_polls(conn)
+    polled_rows = await db.list_polled_characters(conn)
+
+    # Dropdown options come from the *unfiltered* results — every game that
+    # has ever had a poll close, regardless of which one is currently
+    # selected — so switching games is always one click, not two.
+    available_series = sorted(
+        {row["character_series"] for row in polled_rows if row["character_series"]}
+    )
+
+    if selected_series is not None:
+        tier_vote_rows = [
+            row for row in tier_vote_rows if row["character_series"] == selected_series
+        ]
+        polled_rows = [row for row in polled_rows if row["character_series"] == selected_series]
 
     # 1. Cumulative *average* tier — not the same as result_tier (the
     # per-poll majority winner): this averages every individual tier vote
     # a character ever received, across its one poll, into a single score.
     by_character: dict[int, dict] = {}
-    for vote in await db.get_tier_votes_for_closed_polls(conn):
+    for vote in tier_vote_rows:
         entry = by_character.setdefault(
             vote["character_id"],
             {
@@ -77,10 +101,9 @@ async def public_results_page(request: Request) -> HTMLResponse:
     # 2. Characters grouped by "core" — the appeal tag that won each
     # character's poll (polls.result_tag_id, same majority-vote rule as
     # the tier result, computed once at close time).
-    polled = await db.list_polled_characters(conn)
     by_core: dict[str, list[dict]] = {}
     no_core: list[dict] = []
-    for row in polled:
+    for row in polled_rows:
         item = {"name": row["character_name"], "series": row["character_series"], "poll_id": row["poll_id"]}
         if row["core_tag_name"]:
             by_core.setdefault(row["core_tag_name"], []).append(item)
@@ -90,7 +113,7 @@ async def public_results_page(request: Request) -> HTMLResponse:
 
     # 3. Flat list of every individual poll, most recently closed first —
     # reuses the same rows as section 2 (already one row per closed poll).
-    individual_results = list(reversed(polled))
+    individual_results = list(reversed(polled_rows))
 
     return templates.TemplateResponse(
         request,
@@ -100,6 +123,8 @@ async def public_results_page(request: Request) -> HTMLResponse:
             "core_groups": core_groups,
             "no_core": no_core,
             "individual_results": individual_results,
+            "available_series": available_series,
+            "selected_series": selected_series,
         },
     )
 
