@@ -395,3 +395,45 @@ class Polls(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         ok, message = await self.post_new_poll()
         await interaction.followup.send(message, ephemeral=True)
+
+    @app_commands.command(
+        name="refresh-poll",
+        description="Redraw the open poll's buttons (e.g. after adding/removing a tag) without touching votes",
+    )
+    @app_commands.default_permissions(manage_guild=True)
+    async def refresh_poll(self, interaction: discord.Interaction) -> None:
+        # Vote buttons already rebuild themselves (fresh tags, fresh counts)
+        # on every click — see TierButton/TagButton.callback — so a poll
+        # that's still getting votes self-heals onto a newly added tag
+        # naturally. This command is for the case where nobody's clicked
+        # since the tag changed: it forces that same rebuild from the
+        # outside, purely a redraw against current DB state, so existing
+        # votes are untouched either way.
+        await interaction.response.defer(ephemeral=True)
+
+        open_poll = await db.get_open_poll(self.bot.db)
+        if open_poll is None:
+            await interaction.followup.send("No poll is currently open.", ephemeral=True)
+            return
+        if open_poll["message_id"] is None:
+            await interaction.followup.send(
+                "The open poll doesn't have a message yet — try again in a moment.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            channel = self.bot.get_channel(
+                open_poll["channel_id"]
+            ) or await self.bot.fetch_channel(open_poll["channel_id"])
+            message = await channel.fetch_message(open_poll["message_id"])
+        except discord.HTTPException:
+            logger.warning("could not fetch poll #%s's message to refresh it", open_poll["id"])
+            await interaction.followup.send(
+                "Couldn't reach the poll's message — check logs.", ephemeral=True
+            )
+            return
+
+        updated_view = await views.rebuild_view(self.bot, open_poll["id"])
+        await message.edit(view=updated_view)
+        await interaction.followup.send("Refreshed the open poll's buttons.", ephemeral=True)
