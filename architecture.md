@@ -46,6 +46,27 @@ the whole admin site on Discord connectivity for a bot whose main value —
 letting an admin manage characters — doesn't depend on Discord being up at
 that moment.
 
+- **Gateway reconnect resilience**: another real bug that shipped —
+  `discord.py`'s own `Client.connect()` retries forever on ordinary network
+  blips, but only for a specific set of exception types (`OSError`,
+  `ConnectionClosed`, `aiohttp.ClientError`, etc.). Production hit a
+  `RuntimeError` from uvloop ("File descriptor N is used by transport ...")
+  during a reconnect attempt, which isn't one of those types, so it
+  propagated straight out of `bot.start()`. The original `_run_bot` just
+  logged and returned on any exception, which meant the task ended and the
+  gateway connection was dead *permanently* — silently, since REST-only
+  paths (the admin "trigger poll now" button, which reaches Discord via the
+  bot's HTTP client and a channel object cached from before the crash) kept
+  working fine, while voting buttons and `/force-poll` (both delivered over
+  the gateway) quietly stopped responding until the whole process was
+  restarted. `_run_bot` now wraps `bot.start()` in an outer retry loop with
+  exponential backoff (15s up to a 5-minute cap): any exception other than
+  `LoginFailure`/`PrivilegedIntentsRequired` (genuine misconfiguration, not
+  transient — retrying can't fix a bad token) closes the dead bot instance
+  and starts a fresh one, since a `discord.py` `Client` can't be restarted
+  after `start()` exits. `app.state.bot`, which admin routes read to reach
+  "the current bot," is republished on every attempt.
+
 ## Poll lifecycle
 
 ```mermaid
