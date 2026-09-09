@@ -20,6 +20,7 @@ from .routes import (
     auth as auth_routes,
     characters,
     config as config_routes,
+    export,
     polls,
     public_results,
     tags,
@@ -128,6 +129,7 @@ def create_app(config: Config) -> FastAPI:
     app.include_router(tags.router)
     app.include_router(config_routes.router)
     app.include_router(polls.router)
+    app.include_router(export.router)
     app.include_router(public_results.router)
 
     return app

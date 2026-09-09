@@ -390,6 +390,31 @@ confirmation text says explicitly if the poll being deleted is still
 orphaned but harmless (every vote callback already treats a poll that
 `db.get_poll` can't find as "not open anymore").
 
+## Full data export
+
+`GET /admin/export` (`app/admin/routes/export.py`, linked from the nav bar
+as "Export data ⬇") builds a `.zip` in memory and returns it as a download:
+
+- `data/*.json` — one file per table in `db.EXPORT_TABLES` (`characters`,
+  `archetype_tags`, `guild_config`, `polls`, `tier_votes`, `appeal_votes`),
+  each a verbatim `SELECT *` dump via `db.dump_table`. `users` and
+  `sessions` are deliberately never included — they're admin-login
+  internals (password hashes, session tokens), not "the bot's data."
+- `manifest.json` — generation timestamp, a row count per table, and a note
+  on how the files relate (ids are plain foreign keys across the JSON
+  files, same as in the DB; `characters[].image_path`'s basename names a
+  file under `images/`).
+- `images/` — every file a `characters` row's `image_path` points to, read
+  straight off `MEDIA_DIR` through the same `resolve_media_path` the media
+  routes use, de-duped by filename. A row whose file has gone missing since
+  upload is skipped rather than failing the whole export.
+
+Built fully in memory (`io.BytesIO` + `zipfile`) rather than streamed —
+fine at this bot's scale (one guild's characters/polls/images); revisit
+with a temp file if the media library ever grows large enough to matter.
+Gated by the same `require_admin` dependency as the rest of `/admin/*`
+(the export includes per-voter Discord user ids, which isn't public data).
+
 ## Bulk character import
 
 `POST /admin/characters/import` (`app/admin/routes/characters.py`) accepts

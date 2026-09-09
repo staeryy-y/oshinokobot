@@ -470,3 +470,21 @@ async def get_tier_votes(conn: aiosqlite.Connection, poll_id: int) -> list[aiosq
         "SELECT user_id, tier, display_name FROM tier_votes WHERE poll_id = ?", (poll_id,)
     )
     return await cursor.fetchall()
+
+
+# ---------------------------------------------------------------------------
+# Full data export (admin "download all data" feature)
+# ---------------------------------------------------------------------------
+
+# Every table that's "the bot's data" rather than admin-login internals.
+# users/sessions hold password hashes and session tokens — deliberately
+# left out of the export, not just uninteresting to whoever's reading it.
+EXPORT_TABLES = ("characters", "archetype_tags", "guild_config", "polls", "tier_votes", "appeal_votes")
+
+
+async def dump_table(conn: aiosqlite.Connection, table: str) -> list[dict]:
+    """Verbatim dump of one table as plain dicts (JSON-serializable),
+    column order as declared. `table` must come from EXPORT_TABLES — never
+    pass through user input, this interpolates directly into SQL."""
+    cursor = await conn.execute(f"SELECT * FROM {table}")
+    return [dict(row) for row in await cursor.fetchall()]
