@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
 from ... import db
@@ -26,13 +26,52 @@ async def _current_user_id(request: Request, username: str) -> int | None:
     return user["id"] if user is not None else None
 
 
+async def _eligible_pool(conn) -> list:
+    """Exactly what pick_random_unused_character can currently draw from:
+    unused, and — if the admin has narrowed the game filter — in one of
+    the active series. Same call the daily poll itself makes, so callers
+    get a live view of the real pool rather than a separate approximation
+    of it."""
+    guild_config = await db.get_guild_config(conn)
+    active_series = db.parse_active_series(guild_config)
+    return await db.list_characters(conn, unused_only=True, active_series=active_series)
+
+
 @router.get("/characters", response_class=HTMLResponse)
 async def list_characters_page(request: Request) -> HTMLResponse:
     conn = request.app.state.db
     characters = await db.list_characters(conn)
+    pool = await _eligible_pool(conn)
     return templates.TemplateResponse(
-        request, "characters.html", {"characters": characters}
+        request,
+        "characters.html",
+        {"characters": characters, "all_count": len(characters), "pool_count": len(pool)},
     )
+
+
+@router.get("/characters/pool", response_class=HTMLResponse)
+async def character_pool_page(request: Request) -> HTMLResponse:
+    conn = request.app.state.db
+    pool = await _eligible_pool(conn)
+    all_characters = await db.list_characters(conn)
+    return templates.TemplateResponse(
+        request,
+        "character_pool.html",
+        {"characters": pool, "all_count": len(all_characters), "pool_count": len(pool)},
+    )
+
+
+@router.post("/characters/{character_id}/toggle-deprioritized", response_class=HTMLResponse)
+async def toggle_character_deprioritized(
+    request: Request, character_id: int, view: Annotated[str, Query()] = "all"
+) -> HTMLResponse:
+    conn = request.app.state.db
+    await db.toggle_character_deprioritized(conn, character_id)
+    if view == "pool":
+        pool = await _eligible_pool(conn)
+        return templates.TemplateResponse(request, "_character_pool_list.html", {"characters": pool})
+    characters = await db.list_characters(conn)
+    return templates.TemplateResponse(request, "_character_list.html", {"characters": characters})
 
 
 @router.post("/characters", response_class=HTMLResponse)

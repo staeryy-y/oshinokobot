@@ -99,8 +99,9 @@ stateDiagram-v2
   forever with its character burned from the pool for nothing — the poll
   row is deleted so the character falls back into the unused pool.
 - **Character selection**: uniformly random from characters with no row in
-  `polls` yet (`db.pick_random_unused_character`). Once a character is
-  posted, it's permanently "used," even if the poll technically failed
+  `polls` yet (`db.pick_random_unused_character`), except deprioritized
+  characters sort last — see *Character priority* below. Once a character
+  is posted, it's permanently "used," even if the poll technically failed
   (e.g. wrong channel) — there's no re-queue mechanism in v1 (see Open
   items). Optionally narrowed further by `guild_config.active_series` —
   see *Game filter* below — but "used" status itself is tracked globally,
@@ -198,6 +199,39 @@ bulk-import format already populates it that way).
   validation error rather than silently behaving like "no games" (which
   would just mean every future poll skips) — has to be a deliberate choice
   through "All games" instead.
+
+## Character priority
+
+`characters.deprioritized` (0/1, default 0) lets an admin mark a character
+"pick this last" without removing it from rotation. It only changes the
+*order* `pick_random_unused_character` draws in, via
+`ORDER BY deprioritized ASC, RANDOM() LIMIT 1`: since `deprioritized` is the
+dominant sort key, every non-deprioritized character sorts ahead of every
+deprioritized one regardless of their `RANDOM()` keys, and `RANDOM()` only
+ever breaks ties *within* each group. The practical effect: as long as at
+least one non-deprioritized character remains unused, a deprioritized one
+is never picked — it only comes up once everyone else in the pool (or in
+the active game filter, if narrowed) has already had a poll. Interacts
+with the game filter exactly like the "used" flag does: it's a per-
+character attribute independent of which games are currently active,
+so narrowing/widening the filter doesn't touch it either.
+
+Toggled from the admin site (`db.toggle_character_deprioritized`) — a
+button next to each character on both the main character list and the
+eligible-pool subtab below — rather than being settable at creation/import
+time; there's no bulk-set path yet (see Open items).
+
+### Eligible pool subtab
+
+`GET /admin/characters/pool` shows exactly what
+`pick_random_unused_character` can currently draw from — the same
+`db.list_characters(unused_only=True, active_series=...)` call, so it's a
+live view rather than an approximation of the real pool. Separate from the
+main "All" character list (which shows every character regardless of used
+status or the game filter) via a small subtab nav shared by both pages
+(`_character_subtabs.html`); deprioritized characters still show up here
+(they're still eligible, just lower priority) with a badge and a toggle to
+undo it.
 
 ## Slash commands
 

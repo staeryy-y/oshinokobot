@@ -2,6 +2,8 @@
 {% block title %}Characters — oshinokobot admin{% endblock %}
 {% block content %}
 <h1>Characters</h1>
+{% set active_tab = 'all' %}
+{% include "_character_subtabs.html" %}
 
 <div class="card">
   <h2>Add a character</h2>
@@ -39,6 +41,6 @@
   <div id="import-results"></div>
 </div>
 
-<h2>Pool ({{ characters|length }})</h2>
+<h2>All characters ({{ characters|length }})</h2>
 {% include "_character_list.html" %}
 {% endblock %}

@@ -193,6 +193,14 @@ async def delete_character(conn: aiosqlite.Connection, character_id: int) -> Non
 async def pick_random_unused_character(
     conn: aiosqlite.Connection, *, active_series: list[str] | None = None
 ) -> aiosqlite.Row | None:
+    """Uniformly random among unused (and, if given, in-series) characters —
+    except deprioritized ones sort dead last no matter their random key, so
+    they're only ever picked once every non-deprioritized character in the
+    pool has already been used. `ORDER BY deprioritized ASC, RANDOM()`
+    achieves this for free: deprioritized is 0/1, so it's the dominant sort
+    key and RANDOM() only breaks ties *within* each of those two groups —
+    the deprioritized group can never sort above the other one while it's
+    non-empty."""
     query = """
         SELECT characters.* FROM characters
         LEFT JOIN polls ON polls.character_id = characters.id
@@ -203,9 +211,23 @@ async def pick_random_unused_character(
         placeholders = ",".join("?" for _ in active_series)
         query += f" AND characters.series IN ({placeholders})"
         params.extend(active_series)
-    query += " ORDER BY RANDOM() LIMIT 1"
+    query += " ORDER BY deprioritized ASC, RANDOM() LIMIT 1"
     cursor = await conn.execute(query, params)
     return await cursor.fetchone()
+
+
+async def toggle_character_deprioritized(conn: aiosqlite.Connection, character_id: int) -> bool:
+    """Flips the flag and returns the new value — same toggle shape as
+    toggle_appeal_vote, so the route doesn't need a separate read first."""
+    await conn.execute(
+        "UPDATE characters SET deprioritized = 1 - deprioritized WHERE id = ?", (character_id,)
+    )
+    await conn.commit()
+    cursor = await conn.execute(
+        "SELECT deprioritized FROM characters WHERE id = ?", (character_id,)
+    )
+    row = await cursor.fetchone()
+    return bool(row["deprioritized"]) if row is not None else False
 
 
 # ---------------------------------------------------------------------------

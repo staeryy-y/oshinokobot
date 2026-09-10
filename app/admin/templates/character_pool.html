@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Eligible pool — oshinokobot admin{% endblock %}
+{% block content %}
+<h1>Characters</h1>
+{% set active_tab = 'pool' %}
+{% include "_character_subtabs.html" %}
+
+<p class="muted">
+  Who the daily poll can actually draw next: not yet used in a poll, and — if
+  the <a href="/admin/config">game filter</a> is narrowed — in one of the
+  active games. Deprioritizing a character here doesn't remove it from the
+  pool, it just sends it to the back: the random draw always uses up every
+  non-deprioritized character first.
+</p>
+
+<h2>Pool ({{ characters|length }})</h2>
+{% include "_character_pool_list.html" %}
+{% endblock %}
