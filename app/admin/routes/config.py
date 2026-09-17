@@ -55,7 +55,7 @@ async def update_config(
 
     if error is None:
         try:
-            datetime.strptime(poll_post_time, "%H:%M")
+            poll_post_time = datetime.strptime(poll_post_time, "%H:%M").strftime("%H:%M")
         except ValueError:
             error = "Post time must be HH:MM in 24-hour format."
 

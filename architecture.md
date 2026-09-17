@@ -82,7 +82,7 @@ stateDiagram-v2
   time (in the admin-configured `poll_timezone`) against `poll_post_time`,
   and compares the *date* of the most recently posted poll (also converted
   to that timezone) against today. Idempotency comes from that DB
-  comparison, not an in-memory flag — a restart landing inside the same
+  comparison of polls with a Discord message ID, not an in-memory flag — a restart landing inside the same
   eligible minute won't double-post, unlike a naive "have I already checked
   this minute" flag would need to survive a restart to keep working.
 - **Scheduler resilience**: `discord.py`'s `tasks.loop` silently stops for
@@ -98,12 +98,23 @@ stateDiagram-v2
   inside `_advance_daily_poll` no longer leaves a message-less poll open
   forever with its character burned from the pool for nothing — the poll
   row is deleted so the character falls back into the unused pool.
+  This covers file access and view construction errors as well as Discord
+  HTTP errors; previously a missing image left a row that suppressed all
+  further attempts that day. Older message-less rows no longer satisfy the
+  daily check (they remain in poll history for admin review).
+  The error handler calls `restart()` while the failed task is still running:
+  discord.py schedules the restart after that task exits. Checking
+  `is_running()` first prevented the old handler from ever restarting.
+  Scheduled checks and manual posting share an asyncio lock so a daily
+  check cannot mistake an in-progress manual send for a failed post.
+  Times are parsed as clock times, and config saves normalize to `HH:MM`;
+  the previously accepted `9:00` otherwise compared after every zero-padded
+  hour and prevented posting all day.
 - **Character selection**: uniformly random from characters with no row in
   `polls` yet (`db.pick_random_unused_character`), except deprioritized
   characters sort last — see *Character priority* below. Once a character
-  is posted, it's permanently "used," even if the poll technically failed
-  (e.g. wrong channel) — there's no re-queue mechanism in v1 (see Open
-  items). Optionally narrowed further by `guild_config.active_series` —
+  is successfully posted, it's permanently "used." Failed send attempts
+  delete their poll row, returning the character to the pool. Optionally narrowed further by `guild_config.active_series` —
   see *Game filter* below — but "used" status itself is tracked globally,
   independent of that filter: narrowing to one game and back to all games
   never un-uses a character that already got its poll.

@@ -74,9 +74,22 @@ secret ingestion, migrations run from `run.sh`).
 
 **7. Confirm the first poll**
 - Once a channel is set and at least one character exists, the next
-  `poll_post_time` in the configured timezone posts automatically — no
-  manual trigger exists in v1. Check `/admin/polls` afterward to confirm
-  it landed.
+  `poll_post_time` in the configured timezone posts automatically (within
+  the next minute). If the bot starts after that time and has not posted
+  today, it catches up. Check `/admin/polls` and the Discord channel to
+  confirm it landed. The admin "Post a new poll now" button or `/force-poll`
+  can test posting immediately; a manual poll counts as today's poll.
+- For missed polls, check the deployed log for `daily_poll_check tick
+  failed`, `failed to send poll message`, unreachable-channel errors, or
+  an exhausted character pool. Verify the saved timezone, channel, game
+  filter, and that the bot is connected (HTTP health alone doesn't prove it).
+- Scheduler INFO logs go to stdout and the rotating `oshinokobot.log`
+  (or `LOG_PATH`). Startup logs show whether it is waiting for Discord or
+  checking every 60 seconds. Each check logs the local time, timezone,
+  configured posting time and channel, followed by the skip reason or
+  posting attempt. Successful sends include poll and Discord message IDs.
+- Scheduler regression tests run locally without Discord credentials:
+  `./.venv/bin/python -m unittest discover -s tests -v`.
 
 **8. Token rotation**
 - If the token ever leaks: regenerate it from the Developer Portal, update

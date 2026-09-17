@@ -347,16 +347,19 @@ async def delete_poll(conn: aiosqlite.Connection, poll_id: int) -> None:
     await conn.commit()
 
 
-async def list_polls(conn: aiosqlite.Connection, *, limit: int = 20) -> list[aiosqlite.Row]:
+async def list_polls(
+    conn: aiosqlite.Connection, *, limit: int = 20, posted_only: bool = False
+) -> list[aiosqlite.Row]:
     cursor = await conn.execute(
         """
         SELECT polls.*, characters.name AS character_name, characters.series AS character_series
         FROM polls
         JOIN characters ON characters.id = polls.character_id
+        WHERE (? = 0 OR polls.message_id IS NOT NULL)
         ORDER BY polls.posted_at DESC
         LIMIT ?
         """,
-        (limit,),
+        (posted_only, limit),
     )
     return await cursor.fetchall()
 
