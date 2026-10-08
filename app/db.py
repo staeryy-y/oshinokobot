@@ -504,7 +504,7 @@ async def get_tier_votes(conn: aiosqlite.Connection, poll_id: int) -> list[aiosq
 # Every table that's "the bot's data" rather than admin-login internals.
 # users/sessions hold password hashes and session tokens — deliberately
 # left out of the export, not just uninteresting to whoever's reading it.
-EXPORT_TABLES = ("characters", "archetype_tags", "guild_config", "polls", "tier_votes", "appeal_votes")
+EXPORT_TABLES = ("characters", "archetype_tags", "guild_config", "polls", "tier_votes", "appeal_votes", "poll_notes")
 
 
 async def dump_table(conn: aiosqlite.Connection, table: str) -> list[dict]:
@@ -513,3 +513,22 @@ async def dump_table(conn: aiosqlite.Connection, table: str) -> list[dict]:
     pass through user input, this interpolates directly into SQL."""
     cursor = await conn.execute(f"SELECT * FROM {table}")
     return [dict(row) for row in await cursor.fetchall()]
+
+
+async def create_poll_note(conn, *, poll_id: int, user_id: int,
+                           display_name: str, message: str) -> None:
+    await conn.execute(
+        "INSERT INTO poll_notes (poll_id, user_id, display_name, message, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (poll_id, user_id, display_name, message, _now()),
+    )
+    await conn.commit()
+
+
+async def get_poll_notes(conn, poll_id: int, *, public: bool = False) -> list:
+    # Public consumers never receive author metadata.
+    columns = "message" if public else "*"
+    cursor = await conn.execute(
+        f"SELECT {columns} FROM poll_notes WHERE poll_id = ? ORDER BY id", (poll_id,)
+    )
+    return await cursor.fetchall()

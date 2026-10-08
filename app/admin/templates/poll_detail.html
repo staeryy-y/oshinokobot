@@ -1,5 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Poll #{{ poll.id }} — oshinokobot admin{% endblock %}
+{% block title %}Poll #{{ poll.id }} — oshinokobot admin
+<h2>Anonymous notes</h2>
+{% for note in notes %}
+<p class="muted">{{ note.display_name }} ({{ note.user_id }})</p>
+<p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ note.message }}</p>
+{% else %}
+<p class="empty">No notes.</p>
+{% endfor %}
+{% endblock %}
 {% block content %}
 <p><a href="/admin/polls">&larr; back to poll history</a></p>
 <h1>
@@ -63,4 +71,12 @@
 {% else %}
 <p class="empty">No votes yet.</p>
 {% endif %}
+
+<h2>Anonymous notes</h2>
+{% for note in notes %}
+<p class="muted">{{ note.display_name }} ({{ note.user_id }})</p>
+<p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ note.message }}</p>
+{% else %}
+<p class="empty">No notes.</p>
+{% endfor %}
 {% endblock %}

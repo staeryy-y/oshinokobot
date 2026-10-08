@@ -114,6 +114,33 @@ def _format_core(result_tag_id: int | None, tags_by_id: dict[int, str]) -> str:
     return f"**{tags_by_id.get(result_tag_id, 'unknown tag')}**"
 
 
+NOTE_PROMPT = (
+    "Use `/oshinoko-note message:your thoughts` to leave a note on this character. "
+    "Notes appear anonymously here and on the public results page; admins can see the author."
+)
+
+
+def _set_note_fields(embed: discord.Embed, notes: list) -> None:
+    for index in reversed(range(len(embed.fields))):
+        if embed.fields[index].name in ("Leave a note", "Anonymous notes"):
+            embed.remove_field(index)
+    embed.add_field(name="Leave a note", value=NOTE_PROMPT, inline=False)
+    # Reserve space for close-time result fields. All notes remain on the website.
+    budget = min(2000, max(0, 3900 - len(embed)))
+    shown = []
+    for note in reversed(notes):
+        text = discord.utils.escape_markdown(discord.utils.escape_mentions(note["message"]))
+        line = f"• {text}"
+        if len(line) + 2 > budget or len(embed.fields) + len(shown) >= 20:
+            break
+        shown.append(line)
+        budget -= len(line) + 2
+    for line in reversed(shown):
+        embed.add_field(name="Anonymous notes", value=line, inline=False)
+    if len(shown) < len(notes) and len(embed.fields) < 21:
+        embed.add_field(name="Anonymous notes", value=f"{len(notes) - len(shown)} more notes saved; all notes appear on the public result page when this poll closes.", inline=False)
+
+
 class Polls(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -311,6 +338,7 @@ class Polls(commands.Cog):
                 value="Tap S–D below.",
                 inline=False,
             )
+            _set_note_fields(embed, [])
             filename = Path(character["image_path"]).name
             embed.set_image(url=f"attachment://{filename}")
 
@@ -370,6 +398,7 @@ class Polls(commands.Cog):
             return
 
         embed = message.embeds[0] if message.embeds else discord.Embed()
+        _set_note_fields(embed, await db.get_poll_notes(self.bot.db, poll["id"], public=True))
         embed.add_field(
             name="Final tier results", value=_format_tier_results(tier_votes), inline=False
         )
@@ -389,6 +418,44 @@ class Polls(commands.Cog):
             poll["id"], tags, tier_counts=tier_counts, appeal_counts=appeal_counts, disabled=True
         )
         await message.edit(embed=embed, view=closed_view)
+
+    @app_commands.command(
+        name="oshinoko-note", description="Leave a publicly anonymous note on the current character (admins see authors)"
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(message="Your note (1–300 characters; author visible to admins)")
+    async def oshinoko_note(self, interaction: discord.Interaction,
+                           message: app_commands.Range[str, 1, 300]) -> None:
+        await interaction.response.defer(ephemeral=True)
+        message = message.strip()
+        if not message:
+            await interaction.followup.send("Write a non-empty note (up to 300 characters).", ephemeral=True)
+            return
+        async with self._posting_lock:
+            poll = await db.get_open_poll(self.bot.db)
+            if poll is None or poll["message_id"] is None:
+                await interaction.followup.send("There isn't an open poll to leave a note on.", ephemeral=True)
+                return
+            try:
+                channel = self.bot.get_channel(poll["channel_id"]) or await self.bot.fetch_channel(poll["channel_id"])
+                if channel.guild.id != interaction.guild_id:
+                    await interaction.followup.send("There isn't an open poll in this server.", ephemeral=True)
+                    return
+                post = await channel.fetch_message(poll["message_id"])
+            except discord.HTTPException:
+                await interaction.followup.send("Couldn't reach the poll. Your note wasn't saved; try again later.", ephemeral=True)
+                return
+            await db.create_poll_note(self.bot.db, poll_id=poll["id"], user_id=interaction.user.id,
+                                      display_name=interaction.user.display_name, message=message)
+            embed = post.embeds[0].copy() if post.embeds else discord.Embed()
+            _set_note_fields(embed, await db.get_poll_notes(self.bot.db, poll["id"], public=True))
+            try:
+                await post.edit(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            except discord.HTTPException:
+                logger.warning("could not update notes on poll #%s", poll["id"])
+                await interaction.followup.send("Note saved, but Discord couldn't update the poll. It will still appear on the public results page after closing. Admins can see the author.", ephemeral=True)
+                return
+            await interaction.followup.send("Note saved anonymously on the poll. Admins can see the author.", ephemeral=True)
 
     @app_commands.command(
         name="results", description="Show the server's cumulative tier list so far"

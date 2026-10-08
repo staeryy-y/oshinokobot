@@ -141,3 +141,76 @@ class PollSchedulerTests(unittest.IsolatedAsyncioTestCase):
             clock.strptime = RealDatetime.strptime
             await asyncio.gather(self.cog.daily_poll_check(), self.cog.daily_poll_check())
         self.channel.send.assert_awaited_once()
+
+    def note_interaction(self, guild_id=999):
+        return SimpleNamespace(
+            guild_id=guild_id, user=SimpleNamespace(id=987654, display_name="Secret author"),
+            response=SimpleNamespace(defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+        )
+
+    async def prepare_note_poll(self):
+        await self.tick()
+        embed = self.channel.send.call_args.kwargs["embed"]
+        post = SimpleNamespace(embeds=[embed], edit=AsyncMock())
+        self.channel.guild = SimpleNamespace(id=999)
+        self.channel.fetch_message = AsyncMock(return_value=post)
+        return await db.get_open_poll(self.conn), post
+
+    async def test_notes_are_private_and_persist_on_close(self):
+        poll, post = await self.prepare_note_poll()
+        interaction = self.note_interaction()
+        await Polls.oshinoko_note.callback(self.cog, interaction, "they're lowkey ass")
+        interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+        self.assertTrue(interaction.followup.send.call_args.kwargs["ephemeral"])
+        notes = await db.get_poll_notes(self.conn, poll["id"])
+        self.assertEqual(notes[0]["user_id"], 987654)
+        public = await db.get_poll_notes(self.conn, poll["id"], public=True)
+        self.assertEqual(public[0].keys(), ["message"])
+        embed = post.edit.call_args.kwargs["embed"]
+        self.assertIn("they're lowkey ass", str(embed.to_dict()))
+        self.assertNotIn("Secret author", str(embed.to_dict()))
+        self.assertNotIn("987654", str(embed.to_dict()))
+        await self.cog._close_poll(poll)
+        self.assertIn("they're lowkey ass", str(post.edit.call_args.kwargs["embed"].to_dict()))
+        self.assertEqual(len(await db.get_poll_notes(self.conn, poll["id"])), 1)
+        await db.delete_poll(self.conn, poll["id"])
+        self.assertEqual(await db.get_poll_notes(self.conn, poll["id"]), [])
+
+    async def test_note_rejects_wrong_server_blank_and_no_open_poll(self):
+        poll, post = await self.prepare_note_poll()
+        await Polls.oshinoko_note.callback(self.cog, self.note_interaction(111), "wrong server")
+        await Polls.oshinoko_note.callback(self.cog, self.note_interaction(), "   ")
+        self.assertEqual(await db.get_poll_notes(self.conn, poll["id"]), [])
+        await db.close_poll(self.conn, poll["id"], closed_at="2026-09-16T14:00:00+00:00",
+                            result_tier=None, result_tag_id=None)
+        await Polls.oshinoko_note.callback(self.cog, self.note_interaction(), "closed")
+        self.assertEqual(await db.get_poll_notes(self.conn, poll["id"]), [])
+        post.edit.assert_not_awaited()
+
+    def test_note_embed_limits_and_escaping(self):
+        import discord
+        from app.bot.cogs.polls import _set_note_fields
+        embed = discord.Embed(title="Character")
+        notes = [{"message": "@everyone **hello** " + "x" * 270}] * 100
+        _set_note_fields(embed, notes)
+        self.assertLessEqual(len(embed), 3900)
+        self.assertLessEqual(len(embed.fields), 21)
+        self.assertTrue(all(len(field.value) <= 1024 for field in embed.fields))
+        self.assertNotIn("@everyone", str(embed.to_dict()))
+        self.assertIn("more notes saved", embed.fields[-1].value)
+
+    async def test_public_note_template_escapes_html_and_hides_author(self):
+        from app.admin.templating import templates
+        poll, post = await self.prepare_note_poll()
+        await db.create_poll_note(self.conn, poll_id=poll["id"], user_id=987654,
+                                  display_name="Secret author", message="<script>alert(1)</script>")
+        template = templates.env.get_template("public_poll_detail.html")
+        html = template.render(poll=dict(poll, closed_at="2026-09-16T14:00:00"),
+            character=await db.get_character(self.conn, self.character_id),
+            tier_counts={}, tiers=[], appeal_rows=[], voter_rows=[],
+            notes=await db.get_poll_notes(self.conn, poll["id"], public=True))
+        self.assertIn("&lt;script&gt;", html)
+        self.assertNotIn("<script>alert", html)
+        self.assertNotIn("Secret author", html)
+        self.assertNotIn("987654", html)

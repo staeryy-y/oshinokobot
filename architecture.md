@@ -587,3 +587,23 @@ app login rather than a browser-native credential prompt).
 - **Multi-guild**: explicitly out of scope for now (see PLAN.md);
   `guild_config` would become a table instead of a singleton row if that
   changes.
+
+## Semi-anonymous character notes
+
+`/oshinoko-note message:they're lowkey ass` appends a note to the current
+open poll in the same server. Notes are 1–300 characters, whitespace-only
+notes are rejected, and submissions/confirmations are ephemeral. Multiple
+notes per person are allowed until the poll closes. The posting lock
+serializes notes with poll rotation and other notes.
+
+Migration `0009_poll_notes.sql` stores each note's text, Discord user id,
+display-name snapshot, and timestamp. Admin poll detail and authenticated
+data exports retain author information. Discord poll embeds and public
+`/results/<poll_id>` pages receive only message text, without author labels.
+Public pages retain the existing closed-polls-only behavior. Template
+escaping displays notes as text; Discord mentions and Markdown are escaped.
+The poll advertises the command and explains that admins can see authors.
+Notes persist after closing and restart; deleting a poll cascades to its notes.
+Discord shows recent notes within embed limits, with an overflow notice;
+the public result page displays all notes after closing. A failed Discord
+edit leaves the note saved and gives a private explanation to its author.

@@ -95,3 +95,10 @@ secret ingestion, migrations run from `run.sh`).
 - If the token ever leaks: regenerate it from the Developer Portal, update
   `.env` on the host, restart via watcher. No code or git changes needed —
   the token is never embedded anywhere else.
+
+**Character notes:** members can use `/oshinoko-note message:your thoughts`
+while a poll is open. Notes show anonymously in Discord and on the public
+character result page after closing; admins see authors in poll detail and
+exports. Deploy through `run.sh` to apply migration `0009_poll_notes.sql`;
+startup syncs the new slash command (instant in configured guilds, subject
+to Discord propagation delay globally).

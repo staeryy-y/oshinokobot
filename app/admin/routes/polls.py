@@ -72,6 +72,7 @@ async def poll_detail_page(request: Request, poll_id: int) -> HTMLResponse:
             "appeal_rows": appeal_rows,
             "voter_rows": voter_rows,
             "core_tag_name": core_tag_name,
+            "notes": await db.get_poll_notes(conn, poll_id, public=False),
         },
     )
 

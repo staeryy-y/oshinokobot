@@ -1,5 +1,12 @@
 {% extends "public_base.html" %}
-{% block title %}{{ character.name }} — oshinokobot results{% endblock %}
+{% block title %}{{ character.name }} — oshinokobot results
+<h2>Anonymous notes</h2>
+{% for note in notes %}
+<p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ note.message }}</p>
+{% else %}
+<p class="empty">No notes.</p>
+{% endfor %}
+{% endblock %}
 {% block content %}
 <p><a href="/results">&larr; back to results</a></p>
 <h1>
@@ -53,4 +60,11 @@
 {% else %}
 <p class="empty">No votes yet.</p>
 {% endif %}
+
+<h2>Anonymous notes</h2>
+{% for note in notes %}
+<p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ note.message }}</p>
+{% else %}
+<p class="empty">No notes.</p>
+{% endfor %}
 {% endblock %}
