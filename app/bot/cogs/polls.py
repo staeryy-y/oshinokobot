@@ -120,6 +120,33 @@ NOTE_PROMPT = (
 )
 
 
+
+def _character_embed(character) -> discord.Embed:
+    embed = discord.Embed(title=character["name"], color=discord.Color.blurple())
+    if character["series"]:
+        embed.description = character["series"]
+    embed.add_field(name="Who would this appeal to?",
+                    value="Tap as many tags below as apply — pick more than one if it fits.", inline=False)
+    embed.add_field(name="What tier would you rate this character?",
+                    value="Tap S–D below.", inline=False)
+    embed.set_image(url=f"attachment://{Path(character['image_path']).name}")
+    return embed
+
+
+async def _poll_message_and_embed(channel, poll, conn):
+    try:
+        post = await channel.fetch_message(poll["message_id"])
+        embed = post.embeds[0].copy() if post.embeds else discord.Embed()
+        return post, embed
+    except discord.Forbidden as error:
+        # Editing our own message does not require reading channel history.
+        # Reconstruct the embed from persistent data and preserve attachments/buttons.
+        logger.warning("poll #%s fetch forbidden (channel=%s code=%s); editing directly",
+                       poll["id"], poll["channel_id"], error.code)
+        character = await db.get_character(conn, poll["character_id"])
+        return channel.get_partial_message(poll["message_id"]), _character_embed(character)
+
+
 def _set_note_fields(embed: discord.Embed, notes: list) -> None:
     for index in reversed(range(len(embed.fields))):
         if embed.fields[index].name in ("Leave a note", "Anonymous notes"):
@@ -322,22 +349,7 @@ class Polls(commands.Cog):
         )
         view = None
         try:
-            embed = discord.Embed(title=character["name"], color=discord.Color.blurple())
-            if character["series"]:
-                embed.description = character["series"]
-            # Labels the two button groups below — the row gap between them
-            # (tags fill rows 0-3, tiers always sit alone on row 4) is the visual
-            # separation; these headers are what actually says what each is for.
-            embed.add_field(
-                name="Who would this appeal to?",
-                value="Tap as many tags below as apply — pick more than one if it fits.",
-                inline=False,
-            )
-            embed.add_field(
-                name="What tier would you rate this character?",
-                value="Tap S–D below.",
-                inline=False,
-            )
+            embed = _character_embed(character)
             _set_note_fields(embed, [])
             filename = Path(character["image_path"]).name
             embed.set_image(url=f"attachment://{filename}")
@@ -392,12 +404,11 @@ class Polls(commands.Cog):
             channel = self.bot.get_channel(poll["channel_id"]) or await self.bot.fetch_channel(
                 poll["channel_id"]
             )
-            message = await channel.fetch_message(poll["message_id"])
+            message, embed = await _poll_message_and_embed(channel, poll, self.bot.db)
         except discord.HTTPException:
             logger.warning("could not fetch poll #%s's message to close it", poll["id"])
             return
 
-        embed = message.embeds[0] if message.embeds else discord.Embed()
         _set_note_fields(embed, await db.get_poll_notes(self.bot.db, poll["id"], public=True))
         embed.add_field(
             name="Final tier results", value=_format_tier_results(tier_votes), inline=False
@@ -441,18 +452,22 @@ class Polls(commands.Cog):
                 if channel.guild.id != interaction.guild_id:
                     await interaction.followup.send("There isn't an open poll in this server.", ephemeral=True)
                     return
-                post = await channel.fetch_message(poll["message_id"])
-            except discord.HTTPException:
-                await interaction.followup.send("Couldn't reach the poll. Your note wasn't saved; try again later.", ephemeral=True)
+                post, embed = await _poll_message_and_embed(channel, poll, self.bot.db)
+            except discord.HTTPException as error:
+                logger.warning("could not reach poll #%s (channel=%s message=%s status=%s code=%s)",
+                               poll["id"], poll["channel_id"], poll["message_id"], error.status, error.code)
+                detail = ("The poll message or channel was deleted. Ask an admin to post a new poll."
+                          if isinstance(error, discord.NotFound)
+                          else "Couldn't access the poll channel. Ask an admin to check the bot's View Channel permission, or try again later.")
+                await interaction.followup.send(detail + " Your note wasn't saved.", ephemeral=True)
                 return
             await db.create_poll_note(self.bot.db, poll_id=poll["id"], user_id=interaction.user.id,
                                       display_name=interaction.user.display_name, message=message)
-            embed = post.embeds[0].copy() if post.embeds else discord.Embed()
             _set_note_fields(embed, await db.get_poll_notes(self.bot.db, poll["id"], public=True))
             try:
                 await post.edit(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-            except discord.HTTPException:
-                logger.warning("could not update notes on poll #%s", poll["id"])
+            except discord.HTTPException as error:
+                logger.warning("could not update notes on poll #%s (status=%s code=%s)", poll["id"], error.status, error.code)
                 await interaction.followup.send("Note saved, but Discord couldn't update the poll. It will still appear on the public results page after closing. Admins can see the author.", ephemeral=True)
                 return
             await interaction.followup.send("Note saved anonymously on the poll. Admins can see the author.", ephemeral=True)

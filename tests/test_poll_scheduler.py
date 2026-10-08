@@ -214,3 +214,21 @@ class PollSchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("<script>alert", html)
         self.assertNotIn("Secret author", html)
         self.assertNotIn("987654", html)
+
+    async def test_notes_and_closing_work_without_read_history(self):
+        import discord
+        poll, post = await self.prepare_note_poll()
+        self.channel.fetch_message.side_effect = discord.Forbidden(
+            SimpleNamespace(status=403, reason="Forbidden"),
+            {"code": 50013, "message": "Missing Permissions"})
+        self.channel.get_partial_message = Mock(return_value=post)
+        with self.assertLogs('oshinokobot.bot.polls', level='WARNING'):
+            await Polls.oshinoko_note.callback(self.cog, self.note_interaction(), "history-free note")
+            await self.cog._close_poll(poll)
+        self.assertEqual(post.edit.await_count, 2)
+        embed = post.edit.call_args.kwargs["embed"]
+        self.assertEqual(embed.title, "Test character")
+        self.assertIn("history-free note", str(embed.to_dict()))
+        self.assertEqual(embed.image.url, "attachment://image.png")
+        self.assertEqual(embed.footer.text, "Poll closed")
+        self.assertEqual(len(await db.get_poll_notes(self.conn, poll["id"])), 1)

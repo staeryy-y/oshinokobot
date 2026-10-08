@@ -13,8 +13,8 @@ secret ingestion, migrations run from `run.sh`).
   `Intents.default()` already covers this bot (no message content, member
   list, or presence needed; voting is entirely button/select interactions).
 - Build an OAuth2 invite URL with scopes `bot` + `applications.commands`,
-  permissions at minimum **Send Messages**, **Embed Links**, and
-  **Attach Files** (the poll image is sent as a message attachment, not a
+  permissions at minimum **View Channel**, **Read Message History**,
+  **Send Messages**, **Embed Links**, and **Attach Files** (the poll image is sent as a message attachment, not a
   URL).
 - Invite the bot to the target guild using that URL.
 

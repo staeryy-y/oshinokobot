@@ -607,3 +607,9 @@ Notes persist after closing and restart; deleting a poll cascades to its notes.
 Discord shows recent notes within embed limits, with an overflow notice;
 the public result page displays all notes after closing. A failed Discord
 edit leaves the note saved and gives a private explanation to its author.
+
+If Discord denies fetching a poll message (for example, missing Read Message
+History), notes and poll closing reconstruct the embed from database data
+and edit the bot's message directly by id. Attachments and voting buttons
+are preserved. Fetch/edit errors log Discord status and error code, without
+logging note contents or author identities.
