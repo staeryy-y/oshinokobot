@@ -115,8 +115,7 @@ def _format_core(result_tag_id: int | None, tags_by_id: dict[int, str]) -> str:
 
 
 NOTE_PROMPT = (
-    "Use `/oshinoko-note message:your thoughts` to leave a note on this character. "
-    "Notes appear anonymously here and on the public results page; admins can see the author."
+    "Use `/oshinoko-note message:your thoughts` to leave a note on this character."
 )
 
 
