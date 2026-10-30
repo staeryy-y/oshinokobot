@@ -16,6 +16,7 @@
     <label for="image">Image</label>
     <input type="file" id="image" name="image"
            accept="image/png,image/jpeg,image/webp,image/gif" required>
+    <p class="muted" id="image-paste-help">You can also paste an image from your clipboard anywhere on this page.</p>
     <button type="submit">Add character</button>
   </form>
 </div>
@@ -43,4 +44,33 @@
 
 <h2>All characters ({{ characters|length }})</h2>
 {% include "_character_list.html" %}
+<script>
+  (() => {
+    const imageInput = document.getElementById("image");
+    if (!imageInput) return;
+
+    document.addEventListener("paste", (event) => {
+      const items = event.clipboardData && event.clipboardData.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (!item.type.startsWith("image/")) continue;
+        const image = item.getAsFile();
+        if (!image) continue;
+
+        const extension = image.type.split("/")[1] || "png";
+        const file = new File([image], `pasted-image.${extension}`, { type: image.type });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        imageInput.files = transfer.files;
+        imageInput.dispatchEvent(new Event("change", { bubbles: true }));
+        event.preventDefault();
+
+        const help = document.getElementById("image-paste-help");
+        if (help) help.textContent = "Pasted image ready to upload.";
+        break;
+      }
+    });
+  })();
+</script>
 {% endblock %}
